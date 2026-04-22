@@ -11,3 +11,6 @@ data:
     LOG_LEVEL=4
     LOG_FILE_NAME=
     STATS_FILE_NAME=
+    IMEX_NODE_CONFIG_FILE=/etc/nvidia-imex/nodes_config.cfg
+    SERVER_PORT=50000
+    IMEX_CMD_PORT=50005
