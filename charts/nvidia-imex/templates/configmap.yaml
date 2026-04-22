@@ -7,6 +7,7 @@ data:
   nodes_config.cfg: |
     {{- .Values.nodesConfig | nindent 4 }}
   config.cfg: |
-    IMEX_CMD_PORT=50005
-    LOG_FILE_NAME=/var/log/nvidia-imex.log
+    DAEMONIZE=0
     LOG_LEVEL=4
+    LOG_FILE_NAME=
+    STATS_FILE_NAME=
