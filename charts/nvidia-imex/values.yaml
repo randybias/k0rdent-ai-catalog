@@ -1,0 +1,36 @@
+# NVIDIA IMEX DaemonSet values
+image:
+  # Driver image already matches the installed driver; apt-install nvidia-imex-<major>
+  # at startup so the daemon version always tracks the driver.
+  repository: nvcr.io/nvidia/driver
+  tag: "580.105.08-ubuntu24.04"
+  pullPolicy: IfNotPresent
+
+driverMajor: "580"
+
+# Node selector — set by k0rdent MultiClusterService via the per-component label
+nodeSelector:
+  nvidia.com/gpu.present: "true"
+
+# IMEX participating nodes. For single-node HGX B300 use 127.0.0.1.
+# For multi-node NVL, list every node's IMEX-reachable IP.
+nodesConfig: |
+  127.0.0.1
+
+tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/master
+    operator: Exists
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
