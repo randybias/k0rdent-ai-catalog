@@ -55,7 +55,8 @@ spec:
             - --async-scheduling
             {{- end }}
             {{- if .Values.vllm.disableLogRequests }}
-            - --disable-log-requests
+            # vLLM 0.17+ renamed the flag; use the negated --enable-log-requests form.
+            - --no-enable-log-requests
             {{- end }}
           env:
             - name: DYN_HEALTH_CHECK_ENABLED
