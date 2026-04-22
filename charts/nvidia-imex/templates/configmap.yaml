@@ -8,8 +8,5 @@ data:
     {{- .Values.nodesConfig | nindent 4 }}
   config.cfg: |
     IMEX_CMD_PORT=50005
-    IMEX_STATS_PORT=50006
-    IMEX_LOG_FILE=/var/log/nvidia-imex.log
-    IMEX_LOG_LEVEL=4
-    IMEX_CONN_WAIT_TIMEOUT=15
-    IMEX_ALLOW_INVALID_PEER_CERTS=1
+    LOG_FILE_NAME=/var/log/nvidia-imex.log
+    LOG_LEVEL=4
