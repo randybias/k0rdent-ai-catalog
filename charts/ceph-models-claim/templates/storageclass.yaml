@@ -10,10 +10,10 @@ parameters:
   clusterID: {{ .Values.ceph.clusterID | quote }}
   fsName: {{ .Values.ceph.fsName | quote }}
   pool: cephfs.ai-shared.data
-  csi.storage.k8s.io/provisioner-secret-name: ceph-models-credentials
+  csi.storage.k8s.io/provisioner-secret-name: {{ default "ceph-models-credentials" .Values.ceph.existingSecret }}
   csi.storage.k8s.io/provisioner-secret-namespace: {{ .Values.claim.namespace }}
-  csi.storage.k8s.io/controller-expand-secret-name: ceph-models-credentials
+  csi.storage.k8s.io/controller-expand-secret-name: {{ default "ceph-models-credentials" .Values.ceph.existingSecret }}
   csi.storage.k8s.io/controller-expand-secret-namespace: {{ .Values.claim.namespace }}
-  csi.storage.k8s.io/node-stage-secret-name: ceph-models-credentials
+  csi.storage.k8s.io/node-stage-secret-name: {{ default "ceph-models-credentials" .Values.ceph.existingSecret }}
   csi.storage.k8s.io/node-stage-secret-namespace: {{ .Values.claim.namespace }}
 {{- end }}

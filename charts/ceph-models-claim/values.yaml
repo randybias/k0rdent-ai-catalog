@@ -9,10 +9,15 @@ ceph:
     - "10.0.2.209:6789"
     - "10.0.2.211:6789"
   userID: "k0rdent-models"
-  # The Ceph user key MUST be provided via ServiceTemplate values override
-  # (kept out of this public chart). Generate or fetch with:
-  #   ceph auth get-key client.k0rdent-models
-  # on a Ceph mon host (e.g. cn5).
+  # Two ways to supply the Ceph user key:
+  #
+  #   (a) existingSecret: name of a Secret in `claim.namespace` that already
+  #       holds `userKey` (and optionally userID). Preferred — keeps secrets
+  #       out of Helm values and ServiceTemplate manifests.
+  #
+  #   (b) userKey: plaintext override. Useful for one-off testing; never
+  #       commit to a public repo.
+  existingSecret: ""
   userKey: ""
 
 # PV + PVC shape

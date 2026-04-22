@@ -23,10 +23,10 @@ spec:
     # volumeHandle must be unique and stable across restarts.
     volumeHandle: {{ printf "%s-%s" .Values.claim.pvName .Values.ceph.fsName | quote }}
     nodeStageSecretRef:
-      name: ceph-models-credentials
+      name: {{ default "ceph-models-credentials" .Values.ceph.existingSecret }}
       namespace: {{ .Values.claim.namespace }}
     nodePublishSecretRef:
-      name: ceph-models-credentials
+      name: {{ default "ceph-models-credentials" .Values.ceph.existingSecret }}
       namespace: {{ .Values.claim.namespace }}
     volumeAttributes:
       clusterID: {{ .Values.ceph.clusterID | quote }}
