@@ -55,6 +55,20 @@ spec:
               if [ -f /config/nodes_config.cfg ]; then
                 cp /config/nodes_config.cfg /etc/nvidia-imex/nodes_config.cfg
               fi
+              # NVreg_CreateImexChannel0=1 is supposed to auto-create channel0
+              # but on HGX B300 SYS-822GS-NB3RT single-node the /dev/nvidia-caps-imex-channels
+              # directory isn't materialized by the driver. We mknod it ourselves from the
+              # major registered in /proc/devices. Safe to rerun — the check is idempotent.
+              if ! [ -c /dev/nvidia-caps-imex-channels/channel0 ]; then
+                major=$(awk '$2=="nvidia-caps-imex-channels"{print $1}' /proc/devices)
+                if [ -n "$major" ]; then
+                  mkdir -p /dev/nvidia-caps-imex-channels
+                  mknod -m 666 /dev/nvidia-caps-imex-channels/channel0 c "$major" 0
+                  echo "Created /dev/nvidia-caps-imex-channels/channel0 (major=$major minor=0)"
+                else
+                  echo "WARNING: no nvidia-caps-imex-channels entry in /proc/devices"
+                fi
+              fi
               echo "Starting nvidia-imex..."
               exec nvidia-imex -c /etc/nvidia-imex/config.cfg
           volumeMounts:
@@ -62,6 +76,7 @@ spec:
               mountPath: /config
             - name: dev
               mountPath: /dev
+              mountPropagation: Bidirectional
             - name: run-nvidia
               mountPath: /run/nvidia
               mountPropagation: HostToContainer
