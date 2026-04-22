@@ -51,8 +51,6 @@ spec:
               mountPath: /config
             - name: dev
               mountPath: /dev
-            - name: proc-driver-nvidia
-              mountPath: /proc/driver/nvidia
             - name: run-nvidia
               mountPath: /run/nvidia
               mountPropagation: HostToContainer
@@ -67,9 +65,6 @@ spec:
         - name: dev
           hostPath:
             path: /dev
-        - name: proc-driver-nvidia
-          hostPath:
-            path: /proc/driver/nvidia
         - name: run-nvidia
           hostPath:
             path: /run/nvidia
