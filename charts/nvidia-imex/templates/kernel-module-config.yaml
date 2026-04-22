@@ -1,0 +1,25 @@
+{{- if .Values.kernelModuleConfig.enabled }}
+# ConfigMap consumed by the GPU Operator driver container
+# (referenced via ClusterPolicy.spec.driver.kernelModuleConfig.name).
+# The driver container entrypoint reads /drivers/nvidia.conf at modprobe time
+# and appends each line as an extra module parameter.
+#
+# NVreg_CreateImexChannel0=1 is what lets the driver register the
+# nvidia-caps-imex-channels character class and open channel 0 on load.
+# Without it, CUDA init on B200/B300 returns error 802.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.kernelModuleConfig.name }}
+  namespace: {{ .Values.kernelModuleConfig.namespace }}
+  labels:
+    app.kubernetes.io/name: nvidia-imex
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: kernel-module-config
+data:
+  nvidia.conf: |
+    NVreg_CreateImexChannel0=1
+  nvidia-uvm.conf: ""
+  nvidia-modeset.conf: ""
+  nvidia-peermem.conf: ""
+{{- end }}

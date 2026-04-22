@@ -1,0 +1,89 @@
+apiVersion: nvidia.com/v1alpha1
+kind: DynamoGraphDeployment
+metadata:
+  name: {{ .Values.deployment.name }}
+  namespace: {{ .Values.namespace }}
+spec:
+  services:
+    Frontend:
+      componentType: frontend
+      extraPodSpec:
+        mainContainer:
+          image: {{ .Values.image }}
+          workingDir: /workspace
+          command:
+            - python3
+            - -m
+            - dynamo.frontend
+          args:
+            - --router-reset-states
+      replicas: {{ .Values.replicas.frontend }}
+      resources:
+        requests:
+          cpu: {{ .Values.resources.frontend.requests.cpu | quote }}
+        limits:
+          cpu: {{ .Values.resources.frontend.limits.cpu | quote }}
+
+    VllmDecodeWorker:
+      componentType: worker
+      subComponentType: decode
+      volumeMounts:
+        - name: models
+          mountPoint: {{ .Values.model.mountPath }}
+        {{- if .Values.imex.hostPathInject }}
+        - name: imex-channels
+          mountPoint: /dev/nvidia-caps-imex-channels
+        {{- end }}
+      extraPodSpec:
+        mainContainer:
+          image: {{ .Values.image }}
+          workingDir: /workspace
+          command:
+            - python3
+            - -m
+            - dynamo.vllm
+          args:
+            - --model
+            - {{ printf "%s/%s" .Values.model.mountPath .Values.model.subdir }}
+            - --tensor-parallel-size
+            - {{ .Values.vllm.tensorParallelSize | quote }}
+            - --gpu-memory-utilization
+            - {{ .Values.vllm.gpuMemoryUtilization | quote }}
+            - --max-model-len
+            - {{ .Values.vllm.maxModelLen | quote }}
+            - --block-size
+            - {{ .Values.vllm.blockSize | quote }}
+            {{- if .Values.vllm.asyncScheduling }}
+            - --async-scheduling
+            {{- end }}
+            {{- if .Values.vllm.disableLogRequests }}
+            - --disable-log-requests
+            {{- end }}
+          env:
+            - name: DYN_HEALTH_CHECK_ENABLED
+              value: "false"
+            - name: NVIDIA_IMEX_CHANNELS
+              value: {{ .Values.imex.env | quote }}
+        volumes:
+          - name: models
+            {{- if eq .Values.model.volumeType "pvc" }}
+            persistentVolumeClaim:
+              claimName: {{ .Values.model.pvcName }}
+              readOnly: true
+            {{- else }}
+            hostPath:
+              path: {{ .Values.model.hostPath }}
+              type: Directory
+            {{- end }}
+          {{- if .Values.imex.hostPathInject }}
+          - name: imex-channels
+            hostPath:
+              path: {{ .Values.imex.hostPath }}
+              type: Directory
+          {{- end }}
+      replicas: {{ .Values.replicas.worker }}
+      resources:
+        requests:
+          gpu: {{ .Values.resources.worker.gpu | quote }}
+        limits:
+          gpu: {{ .Values.resources.worker.gpu | quote }}

@@ -1,0 +1,53 @@
+namespace: dynamo-system
+
+deployment:
+  name: qwen3-agg
+
+# Dynamo runtime image that ships the vLLM backend.
+image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.0.0
+
+# --- Model source ---
+model:
+  # Path inside the container where weights are visible. Must match the
+  # mountPath of the chosen volume below.
+  mountPath: /models
+  # Subdirectory under mountPath where Qwen3 lives.
+  subdir: qwen3
+  # Either "pvc" (CephFS) or "hostPath" (local disk fallback until fabric/Ceph is up).
+  volumeType: pvc
+  # Used when volumeType=pvc
+  pvcName: qwen3-model-pvc
+  # Used when volumeType=hostPath
+  hostPath: /opt/models
+
+# --- Serving config ---
+vllm:
+  tensorParallelSize: 8
+  gpuMemoryUtilization: "0.90"
+  maxModelLen: 32768
+  blockSize: 64
+  asyncScheduling: true
+  disableLogRequests: true
+
+# --- IMEX channel injection for GPU pods ---
+# libnvidia-container v1.18 doesn't auto-inject /dev/nvidia-caps-imex-channels
+# yet. Until it does, we hostPath-mount the channel dir into the worker pod.
+# Requires the nvidia-imex DaemonSet to have mknod'd the device on the host.
+imex:
+  hostPathInject: true
+  hostPath: /dev/nvidia-caps-imex-channels
+  # Informational; libnvidia-container ignores this value on our toolkit
+  # version but it's harmless and forward-compatible.
+  env: "0"
+
+replicas:
+  frontend: 1
+  worker: 1
+
+resources:
+  frontend:
+    requests: { cpu: "4" }
+    limits: { cpu: "8" }
+  worker:
+    # 8 GPUs, TP=8 → single worker claims all of them.
+    gpu: "8"

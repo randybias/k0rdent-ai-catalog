@@ -1,0 +1,36 @@
+# CephFS cluster identity
+ceph:
+  clusterID: "1b15af54-38dc-11f1-9232-d8942451a450"
+  fsName: "ai-shared"
+  # Path inside the CephFS filesystem — this is what the keyring is scoped to.
+  rootPath: "/models"
+  monitors:
+    - "10.0.2.207:6789"
+    - "10.0.2.209:6789"
+    - "10.0.2.211:6789"
+  userID: "k0rdent-models"
+  # The Ceph user key MUST be provided via ServiceTemplate values override
+  # (kept out of this public chart). Generate or fetch with:
+  #   ceph auth get-key client.k0rdent-models
+  # on a Ceph mon host (e.g. cn5).
+  userKey: ""
+
+# PV + PVC shape
+claim:
+  # Namespace where the PVC lives. Workloads in other namespaces need their own PVC.
+  namespace: dynamo-system
+  pvName: cephfs-ai-shared-models
+  pvcName: qwen3-model-pvc
+  storage: 1Ti
+  # We're read-only on this key; ROX is the only mode that matches.
+  accessModes:
+    - ReadOnlyMany
+  # CSI driver name as registered by the upstream ceph-csi-cephfs chart
+  # (typically "cephfs.csi.ceph.com" unless someone renamed it).
+  csiDriver: cephfs.csi.ceph.com
+
+# Optional StorageClass. Not strictly needed for the static-PV pattern
+# since the PV is pre-bound, but handy to have for any other claims against CephFS.
+storageClass:
+  enabled: false
+  name: cephfs-ai-shared

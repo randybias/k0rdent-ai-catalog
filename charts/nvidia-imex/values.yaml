@@ -34,3 +34,14 @@ resources:
     memory: 128Mi
   limits:
     memory: 512Mi
+
+# Kernel-module-config ConfigMap for the GPU Operator driver container.
+# Creates /drivers/nvidia.conf with NVreg_CreateImexChannel0=1 — required so
+# the nvidia kernel module registers the imex-channels character class at load
+# time. Match .name to the ClusterPolicy.spec.driver.kernelModuleConfig.name
+# on the workload cluster (we wire that in the gpu-operator ServiceTemplate
+# values).
+kernelModuleConfig:
+  enabled: true
+  name: kernel-module-config
+  namespace: default
