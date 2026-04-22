@@ -27,13 +27,11 @@ spec:
     VllmDecodeWorker:
       componentType: worker
       subComponentType: decode
-      volumeMounts:
-        - name: models
-          mountPoint: {{ .Values.model.mountPath }}
-        {{- if .Values.imex.hostPathInject }}
-        - name: imex-channels
-          mountPoint: /dev/nvidia-caps-imex-channels
-        {{- end }}
+      # NOTE: we intentionally do NOT use the top-level `volumeMounts` field on
+      # the service — that field is a shortcut that auto-creates a matching
+      # volume from top-level `pvcs`, which clashes with anything we declare
+      # under `extraPodSpec.volumes`. Declaring both sides under `extraPodSpec`
+      # keeps volume/volumeMount pairing explicit and collision-free.
       extraPodSpec:
         mainContainer:
           image: {{ .Values.image }}
@@ -64,6 +62,14 @@ spec:
               value: "false"
             - name: NVIDIA_IMEX_CHANNELS
               value: {{ .Values.imex.env | quote }}
+          volumeMounts:
+            - name: models
+              mountPath: {{ .Values.model.mountPath }}
+              readOnly: true
+            {{- if .Values.imex.hostPathInject }}
+            - name: imex-channels
+              mountPath: /dev/nvidia-caps-imex-channels
+            {{- end }}
         volumes:
           - name: models
             {{- if eq .Values.model.volumeType "pvc" }}
