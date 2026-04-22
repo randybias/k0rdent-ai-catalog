@@ -2,7 +2,7 @@ apiVersion: v2
 name: nvidia-imex
 description: NVIDIA IMEX (Inter-node Memory eXchange) daemon DaemonSet for Blackwell (B200/B300) nodes. Required for CUDA context initialization on HGX Blackwell even on single-node deployments.
 type: application
-version: 0.1.4
+version: 0.1.5
 appVersion: "580.105.08"
 keywords:
   - nvidia

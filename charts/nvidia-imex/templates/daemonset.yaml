@@ -41,9 +41,14 @@ spec:
                 apt-get update -qq
                 apt-get install -y --no-install-recommends "nvidia-imex-{{ .Values.driverMajor }}"
               fi
+              # Use the package-shipped default config (has all required keys correct
+              # for the driver version) and only override DAEMONIZE so the daemon
+              # stays in the foreground as PID 1 of this container.
               mkdir -p /etc/nvidia-imex
-              cp /config/nodes_config.cfg /etc/nvidia-imex/nodes_config.cfg
-              cp /config/config.cfg       /etc/nvidia-imex/config.cfg
+              sed -i 's/^DAEMONIZE=.*/DAEMONIZE=0/' /etc/nvidia-imex/config.cfg
+              if [ -f /config/nodes_config.cfg ]; then
+                cp /config/nodes_config.cfg /etc/nvidia-imex/nodes_config.cfg
+              fi
               echo "Starting nvidia-imex..."
               exec nvidia-imex -c /etc/nvidia-imex/config.cfg
           volumeMounts:
