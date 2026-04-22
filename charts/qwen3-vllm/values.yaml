@@ -4,7 +4,10 @@ deployment:
   name: qwen3-agg
 
 # Dynamo runtime image that ships the vLLM backend.
-image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.0.0
+# 1.1.0-dev.1 ships vLLM v0.17.1 (supports qwen3_5_moe). 1.0.0/1.0.1 on vLLM
+# v0.16.0 do not and will fail with "model type qwen3_5_moe but Transformers
+# does not recognize this architecture".
+image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0-dev.1
 
 # --- Model source ---
 model:

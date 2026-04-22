@@ -2,7 +2,7 @@ apiVersion: v2
 name: qwen3-vllm
 description: NVIDIA Dynamo DynamoGraphDeployment serving Qwen3 via vLLM. Single-node aggregated deployment (TP=8) for 8x HGX Blackwell. Consumes the CephFS PVC from ceph-models-claim for read-only model weights. Requires nvidia-imex DaemonSet already running on the target node (hostPath injects /dev/nvidia-caps-imex-channels into the worker pod until nvidia-container-toolkit learns to auto-inject).
 type: application
-version: 0.1.1
+version: 0.1.2
 appVersion: "qwen3-32b"
 keywords:
   - dynamo
