@@ -46,6 +46,12 @@ spec:
               # stays in the foreground as PID 1 of this container.
               mkdir -p /etc/nvidia-imex
               sed -i 's/^DAEMONIZE=.*/DAEMONIZE=0/' /etc/nvidia-imex/config.cfg
+              # Empty LOG_FILE_NAME makes the daemon log to stderr → kubectl logs.
+              sed -i 's/^LOG_FILE_NAME=.*/LOG_FILE_NAME=/' /etc/nvidia-imex/config.cfg
+              sed -i 's/^STATS_FILE_NAME=.*/STATS_FILE_NAME=/' /etc/nvidia-imex/config.cfg
+              # IPv6 is commonly disabled in our nodes; force IPv4 binds.
+              sed -i 's/^IMEX_CMD_BIND_INTERFACE_IP=.*/IMEX_CMD_BIND_INTERFACE_IP=127.0.0.1/' /etc/nvidia-imex/config.cfg
+              sed -i 's/^BIND_INTERFACE_IP=.*/BIND_INTERFACE_IP=127.0.0.1/' /etc/nvidia-imex/config.cfg
               if [ -f /config/nodes_config.cfg ]; then
                 cp /config/nodes_config.cfg /etc/nvidia-imex/nodes_config.cfg
               fi
