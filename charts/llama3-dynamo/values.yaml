@@ -37,7 +37,14 @@ vllm:
   disableLogRequests: true
 
 # Extra vLLM args passed through to `python -m dynamo.vllm`.
-extraArgs: []
+# Default: force FLASH_ATTN — FLASHINFER's attention kernels aren't compiled
+# for Blackwell sm_100 in vllm-runtime:1.0.0, so profile_run crashes with
+# "Error Internal" when vLLM auto-selects FLASHINFER. The env var
+# VLLM_ATTENTION_BACKEND is NOT honored in vLLM 0.16 (Dynamo 1.0.0 image);
+# only the CLI flag is reliable. Verified via `dynamo.vllm --help` 2026-04-23.
+extraArgs:
+  - "--attention-backend"
+  - "FLASH_ATTN"
 
 # Extra env vars on the worker container. Lab-observed workarounds live here:
 #   * NCCL_NVLS_ENABLE=0 — NCCL 2.27 NVLS-fallback deadlock (release notes)
