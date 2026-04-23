@@ -31,9 +31,14 @@ vllm:
   blockSize: 64
   asyncScheduling: true
   disableLogRequests: true
-  # Qwen3.6-MoE has mamba layers → needs hybrid KV cache. Dynamo disables it
-  # by default which fails unification on these models.
-  enableHybridKvCache: true
+  # Qwen3.6-MoE has mamba layers. Setting this to true passes
+  # `--no-disable-hybrid-kv-cache-manager` to vLLM, but vLLM 0.17.1 may
+  # explicitly reject that ("not supported in this configuration"); leaving
+  # it off is usually the right call.
+  enableHybridKvCache: false
+  # Mamba hybrid spec doesn't unify with prefix caching → disable prefix
+  # caching for Qwen3.6 so the KV cache specs can be reduced to one type.
+  disablePrefixCaching: true
 
 # Extra raw vLLM args passed through to `python -m dynamo.vllm`.
 extraArgs: []
