@@ -32,7 +32,7 @@ vllm:
   # Dynamo's vLLM 0.17 where the registry is empty and --reasoning-parser
   # is a silent no-op).
   reasoningParser: "qwen3"
-  toolCallParser: "hermes"
+  toolCallParser: "qwen3_xml"    # Qwen3.6 emits <tool_call><function=name><parameter=name> XML — qwen3_xml parser matches; hermes expects a different (JSON-inside-tag) shape.
   enableAutoToolChoice: true
 
 # Extra CLI args to pass through to `vllm serve` unchanged.
