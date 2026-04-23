@@ -17,6 +17,71 @@ spec:
             - dynamo.frontend
           args:
             - --router-reset-states
+          env:
+            # Dynamo frontend's dynamo_llm::hub tries to fetch model metadata
+            # (config.json, tokenizer.json, chat template, …) from HuggingFace
+            # using the worker's --model *path* as the HF repo id. For a local
+            # path like /models/qwen3.6-35b that 404s, breaking /v1/models and
+            # /v1/chat/completions. With HF_HUB_OFFLINE=1 + a pre-populated
+            # HF-hub cache (seeded by the initContainer below), Dynamo uses the
+            # cached files and skips the network call entirely.
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: HF_HOME
+              value: /hf-cache
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /hf-cache
+        initContainers:
+          # Seed an HF-hub cache layout with the model metadata files from
+          # CephFS. The cache folder name comes from hf-hub's folder_name():
+          # every `/` in the model-id becomes `--`, so `/models/qwen3.6-35b`
+          # ends up as `models----models--qwen3.6-35b`. We COPY (not symlink)
+          # because the CephFS volume isn't mounted in the main container.
+          - name: seed-hf-cache
+            image: {{ .Values.image }}
+            command:
+              - bash
+              - -euc
+              - |
+                set -x
+                SRC="{{ printf "%s/%s" .Values.model.mountPath .Values.model.subdir }}"
+                CACHE_ROOT=/hf-cache/hub
+                # folder_name() transformation on the --model path
+                REPO_NAME="$(echo "{{ printf "%s/%s" .Values.model.mountPath .Values.model.subdir }}" | sed 's|/|--|g')"
+                REPO_DIR="$CACHE_ROOT/models--$REPO_NAME"
+                SNAP="$REPO_DIR/snapshots/local"
+                mkdir -p "$SNAP" "$REPO_DIR/refs"
+                for f in config.json tokenizer.json tokenizer_config.json \
+                         generation_config.json chat_template.jinja \
+                         special_tokens_map.json merges.txt vocab.json \
+                         preprocessor_config.json processor_config.json; do
+                  if [ -f "$SRC/$f" ]; then
+                    cp -a "$SRC/$f" "$SNAP/$f"
+                    echo "copied $f"
+                  fi
+                done
+                echo local > "$REPO_DIR/refs/main"
+                ls -la "$SNAP"
+            volumeMounts:
+              - name: hf-cache
+                mountPath: /hf-cache
+              - name: models
+                mountPath: {{ .Values.model.mountPath }}
+                readOnly: true
+        volumes:
+          - name: hf-cache
+            emptyDir: {}
+          - name: models
+            {{- if eq .Values.model.volumeType "pvc" }}
+            persistentVolumeClaim:
+              claimName: {{ .Values.model.pvcName }}
+              readOnly: true
+            {{- else }}
+            hostPath:
+              path: {{ .Values.model.hostPath }}
+              type: Directory
+            {{- end }}
       replicas: {{ .Values.replicas.frontend }}
       resources:
         requests:
