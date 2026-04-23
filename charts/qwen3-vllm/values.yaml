@@ -25,6 +25,10 @@ model:
 
 # --- Serving config ---
 vllm:
+  # HF-style name Dynamo uses for /v1/models and metadata lookup (via HF API).
+  # If you load from a local path but leave this unset, Dynamo will try to
+  # resolve the path as an HF repo id and fail.
+  servedModelName: "Qwen/Qwen3.6-35B-A3B"
   tensorParallelSize: 8
   gpuMemoryUtilization: "0.90"
   maxModelLen: 32768

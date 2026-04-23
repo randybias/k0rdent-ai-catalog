@@ -43,6 +43,10 @@ spec:
           args:
             - --model
             - {{ printf "%s/%s" .Values.model.mountPath .Values.model.subdir }}
+            {{- if .Values.vllm.servedModelName }}
+            - --served-model-name
+            - {{ .Values.vllm.servedModelName | quote }}
+            {{- end }}
             - --tensor-parallel-size
             - {{ .Values.vllm.tensorParallelSize | quote }}
             - --gpu-memory-utilization
