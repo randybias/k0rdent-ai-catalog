@@ -43,6 +43,11 @@ imex:
   # version but it's harmless and forward-compatible.
   env: "0"
 
+# Extra environment variables to set on the VllmDecodeWorker main container.
+# Use this to tune vLLM / Dynamo runtime behavior without modifying the chart.
+# Each entry is `{name, value}` and gets appended to the built-in env list.
+extraEnv: []
+
 replicas:
   frontend: 1
   worker: 1

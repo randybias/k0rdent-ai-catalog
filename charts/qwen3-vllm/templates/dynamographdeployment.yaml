@@ -63,6 +63,10 @@ spec:
               value: "false"
             - name: NVIDIA_IMEX_CHANNELS
               value: {{ .Values.imex.env | quote }}
+            {{- range .Values.extraEnv }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
           volumeMounts:
             - name: models
               mountPath: {{ .Values.model.mountPath }}
