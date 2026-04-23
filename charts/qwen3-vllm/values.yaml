@@ -70,20 +70,6 @@ replicas:
   frontend: 1
   worker: 1
 
-# Expose the Dynamo frontend outside the workload cluster. Kept in this chart
-# so the external endpoint is part of the reproducible k0rdent stack.
-# Without this, the operator-created Service is ClusterIP-only and the
-# inference API is unreachable from off-cluster.
-frontend:
-  service:
-    enabled: true
-    type: NodePort                     # or LoadBalancer if MetalLB is present
-    port: 8000
-    # Pin the NodePort so the URL is stable across chart upgrades / DGD
-    # re-creations. Must be in the cluster's service-node-port-range
-    # (default 30000-32767).
-    nodePort: 30800
-
 resources:
   frontend:
     requests: { cpu: "4" }

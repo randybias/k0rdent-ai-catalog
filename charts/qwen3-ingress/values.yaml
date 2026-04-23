@@ -1,0 +1,20 @@
+namespace: dynamo-system
+
+ingress:
+  # IngressClass to bind to. Must match the ingress controller's
+  # ingressClassResource.name (default "nginx" for ingress-nginx).
+  className: nginx
+  name: qwen3-inference
+  # Leaving host empty produces a rule with no `host:` field, which matches
+  # ANY Host header — clients can hit the node by IP. Set to a real hostname
+  # once DNS exists.
+  host: ""
+  path: /
+  pathType: Prefix
+  annotations: {}
+
+# Backend Service the ingress routes to. Dynamo's operator creates a
+# ClusterIP Service named `<deployment>-frontend` on port 8000.
+service:
+  name: qwen3-agg-frontend
+  port: 8000

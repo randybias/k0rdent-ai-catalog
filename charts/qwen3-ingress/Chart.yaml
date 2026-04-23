@@ -1,0 +1,10 @@
+apiVersion: v2
+name: qwen3-ingress
+description: Ingress resource routing /v1/* to the Dynamo frontend ClusterIP Service. Host-agnostic (matches any Host header) so clients can reach the inference endpoint by node IP. Decoupled from the qwen3-vllm chart so routing is swappable without touching the model-serving chart.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - ingress
+  - inference
+  - qwen

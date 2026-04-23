@@ -21,8 +21,16 @@ spec:
           image: {{ .Values.image }}
           imagePullPolicy: IfNotPresent
           env:
-            - name: ENDPOINT
-              value: http://{{ .Values.endpoint.host }}:{{ .Values.endpoint.port }}
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: ENDPOINT_HOST
+              value: {{ .Values.endpoint.host | quote }}
+            - name: ENDPOINT_PORT
+              value: {{ .Values.endpoint.port | quote }}
+            - name: ENDPOINT_SCHEME
+              value: {{ .Values.endpoint.scheme | quote }}
             - name: MODEL
               value: {{ .Values.model | quote }}
             - name: READY_TIMEOUT
@@ -35,6 +43,8 @@ spec:
             - sh
             - -euc
             - |
+              HOST="${ENDPOINT_HOST:-$NODE_IP}"
+              ENDPOINT="${ENDPOINT_SCHEME}://${HOST}:${ENDPOINT_PORT}"
               echo "=== k0rdent AI inference stack smoke test ==="
               echo "endpoint: $ENDPOINT"
               echo "model:    $MODEL"
@@ -88,7 +98,6 @@ spec:
                 echo "[FAIL] non-200 status"
                 exit 2
               fi
-              # crude validation: has 'choices' and some content
               if ! echo "$body" | grep -q '"choices"'; then
                 echo "[FAIL] response missing 'choices'"
                 exit 3
