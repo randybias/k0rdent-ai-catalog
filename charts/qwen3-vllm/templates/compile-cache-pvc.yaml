@@ -1,0 +1,20 @@
+{{- if .Values.compileCache.enabled }}
+# Node-local NVMe-backed PVC for vLLM's compile/cudagraph + Inductor cache.
+# Survives worker pod restarts, so subsequent boots reload weights only
+# (~30-60 s) and skip the cold 2-4 min cudagraph capture.
+#
+# StorageClass is local-path (node-local NVMe). Lab policy: CephFS is read-
+# only for weights; caches go on NVMe.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.deployment.name }}-compile-cache
+  namespace: {{ .Values.namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.compileCache.storageClassName | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.compileCache.size }}
+{{- end }}

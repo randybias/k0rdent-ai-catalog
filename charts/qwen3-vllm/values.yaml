@@ -66,6 +66,25 @@ imex:
 # Each entry is `{name, value}` and gets appended to the built-in env list.
 extraEnv: []
 
+# Persistent vLLM compile/cudagraph cache on NVMe. When enabled, the chart
+# creates a PersistentVolumeClaim bound to the `local-path` StorageClass
+# (node-local NVMe) and mounts it into the worker at `mountPath`. The worker
+# is started with VLLM_CACHE_ROOT and TORCHINDUCTOR_CACHE_DIR pointing at
+# this path so cudagraph captures + Inductor artifacts persist across pod
+# restarts. Verified env vars against vllm-runtime:1.1.0-dev.1 (vLLM 0.17.1
+# source envs.py).
+#
+# Without this, every worker restart pays ~2-4 min cold-compile cost on
+# Qwen3.6-MoE + mamba. With this, restart reloads weights only (~30-60 s).
+#
+# CephFS is deliberately NOT an option here — lab policy reserves CephFS for
+# read-only weight streaming; writes go on local NVMe.
+compileCache:
+  enabled: true
+  storageClassName: local-path
+  size: 50Gi
+  mountPath: /var/cache/vllm
+
 replicas:
   frontend: 1
   worker: 1

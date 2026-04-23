@@ -141,6 +141,15 @@ spec:
               value: "false"
             - name: NVIDIA_IMEX_CHANNELS
               value: {{ .Values.imex.env | quote }}
+            {{- if .Values.compileCache.enabled }}
+            # Point vLLM + Inductor at the NVMe-backed PVC so cudagraph
+            # captures + compile artifacts survive pod restarts. Verified
+            # env var names against vLLM 0.17.1 envs.py on 2026-04-23.
+            - name: VLLM_CACHE_ROOT
+              value: {{ .Values.compileCache.mountPath | quote }}
+            - name: TORCHINDUCTOR_CACHE_DIR
+              value: {{ printf "%s/torchinductor" .Values.compileCache.mountPath | quote }}
+            {{- end }}
             {{- range .Values.extraEnv }}
             - name: {{ .name }}
               value: {{ .value | quote }}
@@ -149,6 +158,10 @@ spec:
             - name: models
               mountPath: {{ .Values.model.mountPath }}
               readOnly: true
+            {{- if .Values.compileCache.enabled }}
+            - name: compile-cache
+              mountPath: {{ .Values.compileCache.mountPath }}
+            {{- end }}
             {{- if .Values.imex.hostPathInject }}
             - name: imex-channels
               mountPath: /dev/nvidia-caps-imex-channels
@@ -168,6 +181,11 @@ spec:
               path: {{ .Values.model.hostPath }}
               type: Directory
             {{- end }}
+          {{- if .Values.compileCache.enabled }}
+          - name: compile-cache
+            persistentVolumeClaim:
+              claimName: {{ .Values.deployment.name }}-compile-cache
+          {{- end }}
           {{- if .Values.imex.hostPathInject }}
           - name: imex-channels
             hostPath:
