@@ -1,0 +1,62 @@
+namespace: inference
+
+deployment:
+  name: vllm-qwen3
+
+# Upstream vLLM OpenAI-compatible image. Pin a specific version; `:latest`
+# makes restarts non-deterministic and breaks compile-cache reuse (cache is
+# keyed on torch/vllm versions). 0.19.0 is the lab-validated version from
+# the prior gpu3 setup.
+image: vllm/vllm-openai:v0.19.0
+
+model:
+  # HF id that /v1/models advertises and clients use in their `model:` field.
+  servedModelName: "Qwen/Qwen3.6-35B-A3B"
+  mountPath: /models
+  subdir: qwen3.6-35b
+  pvcName: qwen3-model-pvc
+
+# `vllm serve` flag set — values translate to CLI args in the template.
+vllm:
+  tensorParallelSize: 8
+  gpuMemoryUtilization: "0.90"
+  maxModelLen: 32768          # empty => vLLM default (model.config max)
+  blockSize: 64
+  disablePrefixCaching: true  # Qwen3.6-MoE needs this (mamba KV cache specs)
+  # Reasoning / tool-call parsers. Empty string = don't pass the flag.
+  # vLLM 0.19+ has these registered in its ReasoningParserManager (unlike
+  # Dynamo's vLLM 0.17 where the registry is empty and --reasoning-parser
+  # is a silent no-op).
+  reasoningParser: "qwen3"
+  toolCallParser: "hermes"
+  enableAutoToolChoice: true
+
+# Extra CLI args to pass through to `vllm serve` unchanged.
+extraArgs: []
+
+# Extra env vars on the server container.
+extraEnv:
+  # NCCL 2.27 NVLS-fallback deadlock — harmless on newer NCCL where the bug
+  # is fixed; included defensively. Verify against the image's NCCL version.
+  - name: NCCL_NVLS_ENABLE
+    value: "0"
+  - name: NCCL_MNNVL_ENABLE
+    value: "0"
+
+# --- NVMe compile cache ---
+compileCache:
+  enabled: true
+  storageClassName: local-path
+  size: 50Gi
+  mountPath: /root/.cache/vllm   # vLLM upstream uses $HOME/.cache/vllm (root)
+
+# --- Service ---
+service:
+  type: ClusterIP
+  port: 8000
+
+replicas: 1
+
+resources:
+  requests: { cpu: "4" }
+  limits: { cpu: "8" }
