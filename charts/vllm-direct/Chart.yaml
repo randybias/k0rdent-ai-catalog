@@ -2,7 +2,7 @@ apiVersion: v2
 name: vllm-direct
 description: Upstream vLLM OpenAI-compatible server in a single Deployment, no Dynamo. Mirrors the pre-Dynamo pre-k0rdent gpu3 setup but as a composable k0rdent ServiceTemplate. Model id, image tag, TP size, reasoning/tool-call parsers all parameterized per-model. Reads weights read-only from the CephFS ceph-models-claim PVC; persists compile cache on local-path NVMe.
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "vllm-direct"
 keywords:
   - vllm
