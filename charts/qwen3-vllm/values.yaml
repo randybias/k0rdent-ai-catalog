@@ -31,6 +31,12 @@ vllm:
   blockSize: 64
   asyncScheduling: true
   disableLogRequests: true
+  # Qwen3.6-MoE has mamba layers → needs hybrid KV cache. Dynamo disables it
+  # by default which fails unification on these models.
+  enableHybridKvCache: true
+
+# Extra raw vLLM args passed through to `python -m dynamo.vllm`.
+extraArgs: []
 
 # --- IMEX channel injection for GPU pods ---
 # libnvidia-container v1.18 doesn't auto-inject /dev/nvidia-caps-imex-channels
