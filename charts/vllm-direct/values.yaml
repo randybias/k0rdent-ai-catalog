@@ -24,7 +24,7 @@ model:
 vllm:
   tensorParallelSize: 8
   gpuMemoryUtilization: "0.90"
-  maxModelLen: 32768          # empty => vLLM default (model.config max)
+  maxModelLen: 262144         # Qwen3.6-35B-A3B native is 256K (262144). Override per model.
   blockSize: 64
   disablePrefixCaching: true  # Qwen3.6-MoE needs this (mamba KV cache specs)
   # Reasoning / tool-call parsers. Empty string = don't pass the flag.
