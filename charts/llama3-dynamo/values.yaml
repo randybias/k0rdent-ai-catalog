@@ -1,0 +1,91 @@
+namespace: dynamo-system
+
+deployment:
+  name: llama3-agg
+
+# Dynamo runtime image. The upstream recipe pins 1.0.0 (stable, vLLM 0.16.0);
+# we follow the recipe. Overridable for testing newer dev builds.
+image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.0.0
+
+# --- Model source ---
+# Weights are on CephFS at /ai-shared/models/llama-3.3-70b-instruct-fp8-dynamic;
+# the ceph-models-claim PVC maps that subtree to /models in the pod, so
+# model.path below is the in-pod path. servedModelName is the HF id that
+# /v1/models advertises and clients use in their `model:` field.
+model:
+  servedModelName: "RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic"
+  mountPath: /models
+  subdir: llama-3.3-70b-instruct-fp8-dynamic
+  pvcName: qwen3-model-pvc   # reused — same PVC covers all /models subdirs
+
+# --- Serving config ---
+# Values follow the recipe's agg variant:
+#   --tensor-parallel-size 4 --data-parallel-size 1
+#   --gpu-memory-utilization 0.90
+#   --no-enable-prefix-caching --block-size 128
+# Llama-3.3-70B-Instruct native context is 128K; leave max-model-len unset so
+# vLLM uses the model default. Override via `vllm.maxModelLen` if you want a
+# smaller slice for lower memory pressure.
+vllm:
+  tensorParallelSize: 4
+  dataParallelSize: 1
+  gpuMemoryUtilization: "0.90"
+  maxModelLen: ""            # empty => vLLM default (model.config max)
+  blockSize: 128
+  disablePrefixCaching: true
+  asyncScheduling: false
+  disableLogRequests: true
+
+# Extra vLLM args passed through to `python -m dynamo.vllm`.
+extraArgs: []
+
+# Extra env vars on the worker container. Lab-observed workarounds live here:
+#   * NCCL_NVLS_ENABLE=0 — NCCL 2.27 NVLS-fallback deadlock (release notes)
+#   * VLLM_USE_FLASHINFER_SAMPLER=0 — FlashInfer sm_100 kernel gap on Blackwell
+#   * VLLM_ATTENTION_BACKEND=FLASH_ATTN — prefer FLASH_ATTN over the gapped FlashInfer
+extraEnv:
+  - name: NCCL_NVLS_ENABLE
+    value: "0"
+  - name: NCCL_MNNVL_ENABLE
+    value: "0"
+  - name: VLLM_USE_FLASHINFER_SAMPLER
+    value: "0"
+  - name: VLLM_ATTENTION_BACKEND
+    value: "FLASH_ATTN"
+
+# --- Pattern B fabric handling ---
+# fabricmanager + nvlsm on the host handle single-node NVLink5 init; no IMEX
+# channel injection needed.
+imex:
+  hostPathInject: false
+  hostPath: /dev/nvidia-caps-imex-channels
+  env: "0"
+
+# --- NVMe compile cache (persists cudagraph + Inductor artifacts) ---
+compileCache:
+  enabled: true
+  storageClassName: local-path
+  size: 50Gi
+  mountPath: /var/cache/vllm
+
+# --- HF cache seed (Dynamo frontend MDC lookup workaround) ---
+# Dynamo's frontend tries to resolve the worker's --model path as an HF
+# repo id, which 404s on a local path. Seeding a HF-hub-shaped cache with
+# the model's metadata files and setting HF_HOME + HF_HUB_OFFLINE=1 makes
+# Dynamo use the cached files and skip the network call. Same pattern as
+# qwen3-vllm 0.1.9+.
+hfCacheSeed:
+  enabled: true
+
+replicas:
+  frontend: 1
+  worker: 1
+
+resources:
+  frontend:
+    requests: { cpu: "4" }
+    limits: { cpu: "8" }
+  worker:
+    # TP=4 — recipe allocates 4 GPUs; the other 4 on an 8x B300 chassis sit
+    # idle unless a second deployment shares the node.
+    gpu: "4"

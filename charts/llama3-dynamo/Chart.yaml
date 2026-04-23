@@ -1,0 +1,11 @@
+apiVersion: v2
+name: llama3-dynamo
+description: NVIDIA Dynamo DynamoGraphDeployment serving RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic via vLLM. Aggregated single-node deployment (TP=4) matching the upstream Dynamo recipe at github.com/ai-dynamo/dynamo/tree/main/recipes/llama-3-70b/vllm/agg. Weights loaded read-only from the CephFS ceph-models-claim PVC. NVMe-backed vLLM compile cache persists cudagraph captures across restarts.
+type: application
+version: 0.1.0
+appVersion: "llama-3.3-70b-fp8"
+keywords:
+  - dynamo
+  - vllm
+  - llama
+  - inference

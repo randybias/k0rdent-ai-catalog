@@ -1,0 +1,185 @@
+apiVersion: nvidia.com/v1alpha1
+kind: DynamoGraphDeployment
+metadata:
+  name: {{ .Values.deployment.name }}
+  namespace: {{ .Values.namespace }}
+spec:
+  backendFramework: vllm
+  services:
+    Frontend:
+      componentType: frontend
+      extraPodSpec:
+        mainContainer:
+          image: {{ .Values.image }}
+          workingDir: /workspace
+          command:
+            - python3
+            - -m
+            - dynamo.frontend
+          args:
+            - --router-reset-states
+          {{- if .Values.hfCacheSeed.enabled }}
+          env:
+            # Dynamo frontend's dynamo_llm::hub tries to fetch model metadata
+            # from HuggingFace using the worker's --model *path* as the HF
+            # repo id. For a local path like /models/llama-3.3-70b-... that
+            # 404s, breaking /v1/models. Pre-seed a HF-hub cache (initContainer
+            # below) and force offline mode so Dynamo uses local files.
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: HF_HOME
+              value: /hf-cache
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /hf-cache
+        initContainers:
+          # Copy the model's metadata files from CephFS into an HF-hub-shaped
+          # cache layout. folder_name() transforms every "/" in the repo id
+          # to "--", so the local path /models/<subdir> lands at
+          # ${HF_HOME}/hub/models----models--<subdir>/snapshots/local/ .
+          - name: seed-hf-cache
+            image: {{ .Values.image }}
+            command:
+              - bash
+              - -euc
+              - |
+                set -x
+                SRC="{{ printf "%s/%s" .Values.model.mountPath .Values.model.subdir }}"
+                CACHE_ROOT=/hf-cache/hub
+                REPO_NAME="$(echo "{{ printf "%s/%s" .Values.model.mountPath .Values.model.subdir }}" | sed 's|/|--|g')"
+                REPO_DIR="$CACHE_ROOT/models--$REPO_NAME"
+                SNAP="$REPO_DIR/snapshots/local"
+                mkdir -p "$SNAP" "$REPO_DIR/refs"
+                for f in config.json tokenizer.json tokenizer_config.json \
+                         generation_config.json chat_template.jinja \
+                         special_tokens_map.json merges.txt vocab.json \
+                         preprocessor_config.json processor_config.json; do
+                  if [ -f "$SRC/$f" ]; then
+                    cp -a "$SRC/$f" "$SNAP/$f"
+                    echo "copied $f"
+                  fi
+                done
+                echo local > "$REPO_DIR/refs/main"
+                ls -la "$SNAP"
+            volumeMounts:
+              - name: hf-cache
+                mountPath: /hf-cache
+              - name: models
+                mountPath: {{ .Values.model.mountPath }}
+                readOnly: true
+        volumes:
+          - name: hf-cache
+            emptyDir: {}
+          - name: models
+            persistentVolumeClaim:
+              claimName: {{ .Values.model.pvcName }}
+              readOnly: true
+      {{- else }}
+      {{- end }}
+      replicas: {{ .Values.replicas.frontend }}
+      resources:
+        requests:
+          cpu: {{ .Values.resources.frontend.requests.cpu | quote }}
+        limits:
+          cpu: {{ .Values.resources.frontend.limits.cpu | quote }}
+
+    VllmPrefillWorker:
+      componentType: worker
+      subComponentType: prefill
+      # Recipe (https://github.com/ai-dynamo/dynamo/tree/main/recipes/llama-3-70b/vllm/agg)
+      # uses VllmPrefillWorker for aggregated single-node mode. In agg mode the
+      # prefill worker also runs decode; there's no separate decode worker.
+      extraPodSpec:
+        mainContainer:
+          image: {{ .Values.image }}
+          workingDir: /workspace
+          command:
+            - python3
+            - -m
+            - dynamo.vllm
+          args:
+            - --model
+            - {{ printf "%s/%s" .Values.model.mountPath .Values.model.subdir }}
+            - --served-model-name
+            - {{ .Values.model.servedModelName | quote }}
+            - --tensor-parallel-size
+            - {{ .Values.vllm.tensorParallelSize | quote }}
+            {{- if .Values.vllm.dataParallelSize }}
+            - --data-parallel-size
+            - {{ .Values.vllm.dataParallelSize | quote }}
+            {{- end }}
+            - --gpu-memory-utilization
+            - {{ .Values.vllm.gpuMemoryUtilization | quote }}
+            {{- if .Values.vllm.maxModelLen }}
+            - --max-model-len
+            - {{ .Values.vllm.maxModelLen | quote }}
+            {{- end }}
+            - --block-size
+            - {{ .Values.vllm.blockSize | quote }}
+            {{- if .Values.vllm.asyncScheduling }}
+            - --async-scheduling
+            {{- end }}
+            {{- if .Values.vllm.disableLogRequests }}
+            - --no-enable-log-requests
+            {{- end }}
+            {{- if .Values.vllm.disablePrefixCaching }}
+            - --no-enable-prefix-caching
+            {{- end }}
+            {{- range .Values.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: DYN_HEALTH_CHECK_ENABLED
+              value: "false"
+            - name: NVIDIA_IMEX_CHANNELS
+              value: {{ .Values.imex.env | quote }}
+            {{- if .Values.compileCache.enabled }}
+            - name: VLLM_CACHE_ROOT
+              value: {{ .Values.compileCache.mountPath | quote }}
+            - name: TORCHINDUCTOR_CACHE_DIR
+              value: {{ printf "%s/torchinductor" .Values.compileCache.mountPath | quote }}
+            {{- end }}
+            {{- range .Values.extraEnv }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: models
+              mountPath: {{ .Values.model.mountPath }}
+              readOnly: true
+            {{- if .Values.compileCache.enabled }}
+            - name: compile-cache
+              mountPath: {{ .Values.compileCache.mountPath }}
+            {{- end }}
+            {{- if .Values.imex.hostPathInject }}
+            - name: imex-channels
+              mountPath: /dev/nvidia-caps-imex-channels
+            - name: nvidia-caps
+              mountPath: /dev/nvidia-caps
+            {{- end }}
+        volumes:
+          - name: models
+            persistentVolumeClaim:
+              claimName: {{ .Values.model.pvcName }}
+              readOnly: true
+          {{- if .Values.compileCache.enabled }}
+          - name: compile-cache
+            persistentVolumeClaim:
+              claimName: {{ .Values.deployment.name }}-compile-cache
+          {{- end }}
+          {{- if .Values.imex.hostPathInject }}
+          - name: imex-channels
+            hostPath:
+              path: {{ .Values.imex.hostPath }}
+              type: Directory
+          - name: nvidia-caps
+            hostPath:
+              path: /dev/nvidia-caps
+              type: Directory
+          {{- end }}
+      replicas: {{ .Values.replicas.worker }}
+      resources:
+        requests:
+          gpu: {{ .Values.resources.worker.gpu | quote }}
+        limits:
+          gpu: {{ .Values.resources.worker.gpu | quote }}
