@@ -1,0 +1,32 @@
+# The Dynamo (or vLLM/OpenAI-compatible) frontend Service to probe.
+endpoint:
+  # In-cluster DNS name. For the `qwen3-vllm` chart this is the frontend svc
+  # that Dynamo's operator creates.
+  host: qwen3-agg-frontend
+  port: 8000
+
+# Model name as it appears in /v1/models — must match what the worker
+# registered (typically the --served-model-name value).
+model: "Qwen/Qwen3.6-35B-A3B"
+
+# Expected minimum completion tokens; failure below this is treated as broken.
+minCompletionTokens: 4
+
+# Timeouts
+timeouts:
+  # How long the Job waits for /v1/models to show the model listed.
+  readinessSeconds: 600
+  # Overall cap on a single inference attempt.
+  inferenceSeconds: 120
+
+# The Job manifest. `onPullPolicy: IfNotPresent` uses the cached curl image.
+image: curlimages/curl:8.10.1
+
+# Where the Job runs
+namespace: dynamo-system
+
+# If true, the Job is created with `restartPolicy: Never` and a single retry
+# via `backoffLimit`. Most of the time you want this — it's a gate, not a
+# heartbeat. Set to false to re-run every N seconds via a CronJob (out of
+# scope for this chart today).
+oneShot: true

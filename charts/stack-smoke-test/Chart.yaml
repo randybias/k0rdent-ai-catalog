@@ -1,0 +1,11 @@
+apiVersion: v2
+name: stack-smoke-test
+description: End-to-end functional smoke test for the k0rdent AI inference stack. Runs a Kubernetes Job that POSTs a minimal /v1/chat/completions to the Dynamo frontend and asserts HTTP 200 + a non-empty completion. Exits 0 only when the entire stack (GPU Operator, CephFS mount, fabric, Dynamo platform, vLLM worker, Dynamo frontend routing) is actually usable end-to-end. "Node Ready" in k8s only means pods are running — this is the authoritative stack-works signal.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - smoke-test
+  - inference
+  - dynamo
+  - qwen
