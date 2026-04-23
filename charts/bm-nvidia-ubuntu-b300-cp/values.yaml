@@ -49,9 +49,12 @@ controlPlane: # @schema description: Control plane configuration; type: object
   # reaching Ready → Layers 2+ never attempt to install on a broken host.
   preStartCommands: # @schema description: Commands to run before starting K0s service; type: array
     # --- Base OS prep ---
-    - echo "ubuntu:Ubuntu1234!" | chpasswd
-    - sed -i "s/^#*PasswordAuthentication.*/PasswordAuthentication yes/" /etc/ssh/sshd_config && systemctl restart ssh
-    - mkdir -p /home/ubuntu/.ssh && chown -R ubuntu:ubuntu /home/ubuntu/.ssh && chmod 700 /home/ubuntu/.ssh && chmod 600 /home/ubuntu/.ssh/authorized_keys || true
+    # NOTE: lab-specific conveniences (setting ubuntu user password,
+    # enabling ssh password auth) are intentionally NOT set here — they
+    # belong in per-cluster overrides, not in a shareable template
+    # default. ssh authorized_keys are per-cluster too; supply via
+    # controlPlane.files in the ClusterDeployment.
+    - mkdir -p /home/ubuntu/.ssh && chown -R ubuntu:ubuntu /home/ubuntu/.ssh && chmod 700 /home/ubuntu/.ssh && chmod 600 /home/ubuntu/.ssh/authorized_keys 2>/dev/null || true
     - sed -i "s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=5/;s/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=menu/" /etc/default/grub && update-grub
 
     # --- containerd drop-in bridging ---
