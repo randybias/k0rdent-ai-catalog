@@ -1,0 +1,15 @@
+{{- range $p := .Values.ipPools }}
+---
+apiVersion: ipam.metal3.io/v1alpha1
+kind: IPPool
+metadata:
+  name: {{ $p.name }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  clusterName: {{ template "cluster.name" (merge . $) }}
+  pools:
+  {{- with $p.pools }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  namePrefix: {{ $p.name }}
+{{- end }}

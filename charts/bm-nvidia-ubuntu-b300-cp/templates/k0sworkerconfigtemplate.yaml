@@ -1,0 +1,63 @@
+{{- if gt (int .Values.workersNumber) 0 }}
+{{- $global := .Values.global | default dict }}
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: K0sWorkerConfigTemplate
+metadata:
+  name: {{ include "k0sworkerconfigtemplate.name" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  template:
+    spec:
+      {{- if and $global.k0sURL .Values.k0s.version .Values.k0s.arch }}
+      downloadURL: "{{ $global.k0sURL }}/k0s-{{ .Values.k0s.version }}-{{ .Values.k0s.arch }}"
+      {{- end }}
+      version: {{ .Values.k0s.version }}
+      {{- if or $global.registryCertSecret $global.k0sURLCertSecret .Values.worker.files }}
+      files:
+      {{- end }}
+      {{- with .Values.worker.files }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or $global.registryCertSecret $global.k0sURLCertSecret }}
+      {{- $certs := dict "registry.crt" $global.registryCertSecret "k0s-url.crt" $global.k0sURLCertSecret }}
+      {{- range $path, $secret := $certs }}
+      {{- if $secret }}
+        - contentFrom:
+            secretRef:
+              name: {{ $secret }}
+              key: ca.crt
+          permissions: "0664"
+          path: /usr/local/share/ca-certificates/{{ $path }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
+      {{- if or .Values.worker.preStartCommands $global.registryCertSecret $global.k0sURLCertSecret }}
+      preStartCommands:
+      {{- with .Values.worker.preStartCommands }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or $global.registryCertSecret $global.k0sURLCertSecret }}
+        - {{ printf "%supdate-ca-certificates" (ternary "sudo " "" $.Values.worker.useSudo) | quote }}
+      {{- end }}
+      {{- end }}
+      {{- with .Values.worker.postStartCommands }}
+      postStartCommands:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.customUserDataRef }}
+      customUserDataRef:
+        {{- with .secretRef }}
+        secretRef:
+          name: {{ .name }}
+          key: {{ .key }}
+        {{- else with .configMapRef }}
+        configMapRef:
+          name: {{ .name }}
+          key: {{ .key }}
+        {{- end }}
+      {{- end }}
+      args:
+        {{- with .Values.worker.args }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}

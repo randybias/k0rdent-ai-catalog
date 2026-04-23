@@ -1,0 +1,34 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3MachineTemplate
+metadata:
+  name: {{ include "metal3machinetemplate.controlplane.name" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  nodeReuse: {{ .Values.controlPlane.nodeReuse }}
+  template:
+    spec:
+      {{- if .Values.controlPlane.automatedCleaningMode }}
+      automatedCleaningMode: {{ .Values.controlPlane.automatedCleaningMode }}
+      {{- end }}
+      {{- if and .Values.controlPlane.customDeploy.method (ne .Values.controlPlane.customDeploy.method "") }}
+      customDeploy:
+        method: {{ .Values.controlPlane.customDeploy.method }}
+      {{- end }}
+      {{- with .Values.controlPlane.hostSelector }}
+      hostSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      dataTemplate:
+        name: {{ .Values.controlPlane.dataTemplate | default (include "metal3datatemplate.name" .) }}
+      {{- if and .Values.controlPlane.image (ne .Values.controlPlane.image "") }}
+      image:
+        url: {{ .Values.controlPlane.image }}
+        {{- if .Values.controlPlane.format }}
+        format: {{ .Values.controlPlane.format }}
+        {{- end }}
+        {{- if and .Values.controlPlane.checksum (ne .Values.controlPlane.checksum "") }}
+        checksum: {{ .Values.controlPlane.checksum }}
+        {{- end }}
+        {{- if .Values.controlPlane.checksumType }}
+        checksumType: {{ .Values.controlPlane.checksumType }}
+        {{- end }}
+      {{- end }}

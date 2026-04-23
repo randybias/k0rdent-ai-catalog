@@ -1,0 +1,36 @@
+{{- if gt (int .Values.workersNumber) 0 }}
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3MachineTemplate
+metadata:
+  name: {{ include "metal3machinetemplate.worker.name" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  nodeReuse: {{ .Values.worker.nodeReuse }}
+  template:
+    spec:
+      {{- if .Values.worker.automatedCleaningMode }}
+      automatedCleaningMode: {{ .Values.worker.automatedCleaningMode }}
+      {{- end }}
+      {{- if and .Values.worker.customDeploy.method (ne .Values.worker.customDeploy.method "") }}
+      customDeploy:
+        method: {{ .Values.worker.customDeploy.method }}
+      {{- end }}
+      {{- with .Values.worker.hostSelector }}
+      hostSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      dataTemplate:
+        name: {{ .Values.worker.dataTemplate | default (include "metal3datatemplate.name" .) }}
+      {{- if and .Values.worker.image (ne .Values.worker.image "") }}
+      image:
+        url: {{ .Values.worker.image }}
+        {{- if .Values.worker.format }}
+        format: {{ .Values.worker.format }}
+        {{- end }}
+        {{- if and .Values.worker.checksum (ne .Values.worker.checksum "") }}
+        checksum: {{ .Values.worker.checksum }}
+        {{- end }}
+        {{- if .Values.worker.checksumType }}
+        checksumType: {{ .Values.worker.checksumType }}
+        {{- end }}
+      {{- end }}
+{{- end }}

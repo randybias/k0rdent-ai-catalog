@@ -1,0 +1,258 @@
+# @schema title: Metal3 Cluster Configuration (NVIDIA DGX B300, Pattern B)
+# @schema description: Configuration for a Metal3 k0s cluster targeting
+#   NVIDIA DGX B300. Host-stack install, kernel pin, fabricmanager,
+#   containerd drop-in, fabric NIC from BMH annotations, and Layer-1
+#   self-validation are baked into the defaults. Consumers supply image
+#   URL/checksum, IPPool, and host selector; nothing else.
+
+# Cluster parameters
+controlPlaneNumber: 1 # @schema description: The number of the control plane nodes; type: number; minimum: 1
+workersNumber: 0 # @schema description: The number of the worker nodes; type: number; minimum: 0
+clusterIdentity: # @schema description: The Metal3 Service Account credentials secret reference, auto-populated; type: object
+  name: "" # @schema description: The Metal3 Service Account credentials secret name, auto-populated; type: string
+clusterNetwork: # @schema description: The cluster network configuration; type: object
+  apiServerPort: 6443 # @schema description: The port the API Server should bind to; type: number; minimum: 1; maximum: 65535
+  pods: # @schema description: The network ranges from which Pod networks are allocated; type: object
+    # @schema description: A list of CIDR blocks
+    # @schema type: array
+    # @schema item: string
+    cidrBlocks:
+      - "10.244.0.0/16"
+  services: # @schema description: The network ranges from which service VIPs are allocated; type: object
+    cidrBlocks: # @schema description: A list of CIDR blocks; type: array
+      - "10.96.0.0/16"
+clusterLabels: {} # @schema description: Labels to apply to the cluster; type: object; additionalProperties: true
+clusterAnnotations: {} # @schema description: Annotations to apply to the cluster; type: object; additionalProperties: true
+updateStrategy: InPlace # @schema description: Update strategies to update the control plane: InPlace, Recreate or RecreateDeleteFirst
+
+# Metal3 machines parameters
+controlPlane: # @schema description: Control plane configuration; type: object
+  # @schema description: Automated node cleaning mode: 'metadata' or 'disabled'
+  # @schema type: string
+  # @schema enum: [ metadata, disabled ]
+  automatedCleaningMode: metadata
+  customDeploy: # @schema description: Custom deploy configuration; type: object
+    method: "" # @schema description: Custom deploy method for control plane nodes; type: string
+  files: [] # @schema description: specifies extra files to be passed to user_data upon control plane creation; type: array
+  format: qcow2 # @schema description: Container disk image format for control plane nodes; type: string
+  image: "" # @schema description: Container disk image for control plane nodes, examples: [http://10.0.0.2:6180/cloudimg.img]; type: string; required: true
+  checksum: "" # @schema description: Container disk image checksum for control plane nodes, examples: [http://10.0.0.2:6180/SHA256SUMS]; type: string; required: true
+  checksumType: sha256 # @schema description: Container disk image checksum type for control plane nodes; enum: [sha256,sha512,md5]
+  nodeReuse: false # @schema description: Re-use the same BaremetalHosts during deprovisioning and provisioning; type: boolean
+
+  # --- preStartCommands: every host-prep step baked in ---
+  # Order matters. Every cloud-init {{ ds.meta_data.* }} token is
+  # substituted at provision time using values surfaced by
+  # Metal3DataTemplate.metaData (including fromAnnotations, below).
+  # The final self-validation block exits non-zero on any failure,
+  # which aborts the Machine bootstrap and prevents the CD from ever
+  # reaching Ready → Layers 2+ never attempt to install on a broken host.
+  preStartCommands: # @schema description: Commands to run before starting K0s service; type: array
+    # --- Base OS prep ---
+    - echo "ubuntu:Ubuntu1234!" | chpasswd
+    - sed -i "s/^#*PasswordAuthentication.*/PasswordAuthentication yes/" /etc/ssh/sshd_config && systemctl restart ssh
+    - mkdir -p /home/ubuntu/.ssh && chown -R ubuntu:ubuntu /home/ubuntu/.ssh && chmod 700 /home/ubuntu/.ssh && chmod 600 /home/ubuntu/.ssh/authorized_keys || true
+    - sed -i "s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=5/;s/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=menu/" /etc/default/grub && update-grub
+
+    # --- containerd drop-in bridging ---
+    - mkdir -p /etc/k0s/containerd.d /etc/containerd
+    - rm -rf /etc/containerd/conf.d
+    - ln -sfn /etc/k0s/containerd.d /etc/containerd/conf.d
+
+    # --- apt prep ---
+    - printf 'Acquire::ForceIPv4 "true";\n' > /etc/apt/apt.conf.d/99force-ipv4
+    - sysctl -w net.ipv6.conf.all.disable_ipv6=1
+    - printf 'net.ipv6.conf.all.disable_ipv6=1\n' > /etc/sysctl.d/99-disable-ipv6.conf
+    - DEBIAN_FRONTEND=noninteractive apt-get update -qq
+
+    # --- IB stack (ib_umad + ibstat from infiniband-diags) ---
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)" rdma-core infiniband-diags
+
+    # --- NVIDIA CUDA apt repo ---
+    - wget -qO /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+    - dpkg -i /tmp/cuda-keyring.deb
+    - DEBIAN_FRONTEND=noninteractive apt-get update -qq
+
+    # --- Blackwell host stack (nvidia-open + fabricmanager-595 + nvlsm) ---
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nvidia-open cuda-drivers-fabricmanager-595 nvlsm
+
+    # --- Module auto-load (ib_umad + mlx5_ib) ---
+    - |
+      cat > /etc/modules-load.d/b300-ib.conf <<'EOF'
+      ib_umad
+      mlx5_ib
+      EOF
+    - modprobe ib_umad
+    - modprobe mlx5_ib
+
+    # --- Start fabricmanager ---
+    - systemctl enable --now nvidia-fabricmanager
+
+    # --- Kernel pin + disable unattended-upgrades ---
+    - |
+      apt-mark hold \
+        linux-image-generic \
+        linux-headers-generic \
+        "linux-image-$(uname -r)" \
+        "linux-modules-$(uname -r)" \
+        "linux-modules-extra-$(uname -r)"
+    - systemctl mask --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service || true
+
+    # --- Fabric NIC netplan ---
+    # Per-host values come from BMH annotations via
+    # dataTemplate.metaData.fromAnnotations. Cloud-init substitutes the
+    # {{ ds.meta_data.* }} tokens at provision time.
+    - |
+      cat > /etc/netplan/60-fabric.yaml <<EOF
+      network:
+        version: 2
+        ethernets:
+          {{ ds.meta_data.fabric_nic }}:
+            mtu: {{ ds.meta_data.fabric_mtu }}
+            addresses:
+              - {{ ds.meta_data.fabric_addr }}
+            routes:
+              - to: 10.0.2.0/24
+                via: {{ ds.meta_data.fabric_gw }}
+      EOF
+    - chmod 600 /etc/netplan/60-fabric.yaml
+    - netplan apply
+
+    # --- Layer-1 self-validation gate ---
+    - |
+      set -e
+      echo "=== Layer 1 self-validation ==="
+      test $(ls /sys/class/infiniband/ 2>/dev/null | wc -l) -gt 0
+      echo "  [OK] IB devices present"
+      systemctl is-active nvidia-fabricmanager >/dev/null
+      echo "  [OK] fabricmanager active"
+      test "$(nvidia-smi -L 2>/dev/null | wc -l)" = "8"
+      echo "  [OK] 8 GPUs visible"
+      test "$(nvidia-smi -q 2>/dev/null | grep -c 'Fabric State.*: Completed')" = "8"
+      echo "  [OK] all 8 GPUs fabric-ready"
+      timeout 5 bash -c 'echo > /dev/tcp/10.0.2.207/6789'
+      echo "  [OK] Ceph MON reachable"
+      echo "=== LAYER-1-VALIDATED ==="
+
+  postStartCommands: [] # @schema description: Commands to run after starting K0s service; type: array
+  keepalived: # @schema description: Contains the keepalived configuration; type: object
+    enabled: true # @schema description: Indicates if control plane load balancing should be enabled; type: boolean
+    virtualIP: "" # @schema description: A user-defined CIDR address which must be routable in the network. Should be the same as the external address, examples: [10.0.0.2/24]; type: string; required: true
+    authPass: "" # @schema description: The password to use; type: string; maxLength: 8
+    interface: "" # @schema description: Network interface to use for keepalived; type: string
+    useCustomTemplates: false # @schema description: EXPERIMENTAL. Use custom templates for Keepalived virtual servers and VRRP configuration
+    customTemplateFiles: # @schema description: EXPERIMENTAL. Custom template file paths; type: object
+      vrrp: /etc/k0s/vrrp.tmpl # @schema description: VRRP configuration template path; type: string
+      virtualServers: /etc/k0s/vs.tmpl # @schema description: Virtual servers configuration template path; type: string
+  hostSelector: {} # @schema description: Specify criteria for matching labels on BareMetalHost objects; type: object; additionalProperties: true
+  dataTemplate: "" # @schema description: DataTemplate name to use for control plane Metal3MachineTemplate; type: string
+  disabledComponents: "" # @schema description: Disable k0s components, should include "konnectivity-server" in case of using 3-node control plane; type: string
+  args: # @schema description: Additional arguments to pass to K0s control plane; type: array
+    - --kubelet-extra-args="--node-ip={{ ds.meta_data.provisioningIP }}"
+    - --labels="metal3.io/uuid={{ ds.meta_data.uuid }}"
+  customUserDataRef: {} # @schema description: Reference to ConfigMap or Secret containing custom UserData; type: object
+  useSudo: false # @schema description: Determines whether to use sudo for k0s cluster bootstrap commands; type: boolean; default: false
+
+# @schema description: Worker parameters
+# type: object
+worker:
+  # @schema description: Automated node cleaning mode: 'metadata' or 'disabled'
+  # @schema type: string
+  # @schema enum: [ metadata, disabled ]
+  automatedCleaningMode: metadata
+  customDeploy: # @schema description: Custom deploy configuration; type: object
+    method: "" # @schema description: Custom deploy method for worker nodes; type: string
+  files: [] # @schema description: specifies extra files to be passed to user_data upon worker creation; type: array
+  format: qcow2 # @schema description: Container disk image format for worker nodes; type: string
+  image: "" # @schema description: Container disk image for worker nodes, examples: [http://10.0.0.2:6180/cloudimg.img]; type: string; required: true
+  checksum: "" # @schema description: Container disk image checksum for worker nodes, examples: [http://10.0.0.2:6180/SHA256SUMS]; type: string; required: true
+  checksumType: sha256 # @schema description: Container disk image checksum type for worker nodes; enum: [sha256,sha512,md5]
+  nodeReuse: false # @schema description: Re-use the same BaremetalHosts during deprovisioning and provisioning; type: boolean
+  preStartCommands: [] # @schema description: Commands to run before starting K0s service; type: array
+  postStartCommands: [] # @schema description: Commands to run after starting K0s service; type: array
+  hostSelector: {} # @schema description: Specify criteria for matching labels on BareMetalHost objects; type: object; additionalProperties: true
+  dataTemplate: "" # @schema description: DataTemplate name to use for worker Metal3MachineTemplate; type: string
+  args: # @schema description: Additional arguments to pass to K0s worker; type: array
+    - --kubelet-extra-args="--node-ip={{ ds.meta_data.provisioningIP }}"
+    - --labels="metal3.io/uuid={{ ds.meta_data.uuid }}"
+  customUserDataRef: {} # @schema description: Reference to ConfigMap or Secret containing custom UserData; type: object
+  useSudo: false # @schema description: Determines whether to use sudo for k0s cluster bootstrap commands; type: boolean; default: false
+
+# Metal3DataTemplate
+dataTemplate: # @schema description: Metal3DataTemplate parameters; type: object
+  metaData: # @schema description: Metal3DataTemplate metadata configuration; type: object; additionalProperties: true
+    ipAddressesFromIPPool: [] # @schema description: The list of metadata items to be rendered as ip addresses; type: array
+    objectNames: # @schema description: Render the name of the object that matches the type given. It takes an object attribute, containing the type of the object; type: array
+      - key: name
+        object: machine
+    # @schema description: The list of metadata items to be rendered as network prefixes
+    # @schema type: array
+    # @schema item: object
+    prefixesFromIPPool: []
+    # Baked-in: fabric NIC details from per-host BMH annotations.
+    # Operators annotate each BareMetalHost with the four lab.mirantis.com/
+    # keys once; template reads them transparently. Cloud-init surfaces
+    # them as ds.meta_data.fabric_{nic,addr,gw,mtu} inside preStartCommands.
+    fromAnnotations:
+      - key: fabric_nic
+        object: baremetalhost
+        annotation: lab.mirantis.com/fabric-nic
+      - key: fabric_addr
+        object: baremetalhost
+        annotation: lab.mirantis.com/fabric-addr
+      - key: fabric_gw
+        object: baremetalhost
+        annotation: lab.mirantis.com/fabric-gw
+      - key: fabric_mtu
+        object: baremetalhost
+        annotation: lab.mirantis.com/fabric-mtu
+  # Default PXE NIC template for SYS-822GS-NB3RT (DGX B300).
+  # Operator supplies the IPPool name in the ClusterDeployment's
+  # spec.config.dataTemplate.networkData.
+  networkData: # @schema description: Metal3DataTemplate network configuration; type: object; additionalProperties: true
+    links:
+      ethernets:
+        - id: ens3923f0np0
+          macAddress:
+            fromHostInterface: ens3923f0np0
+          type: phy
+    networks: # @schema description: A list of layer 3 networks; type: object; additionalProperties: true
+      ipv4:
+        - id: pxe
+          link: ens3923f0np0
+          ipAddressFromIPPool: ""
+          routes:
+            - network: 0.0.0.0
+              prefix: 0
+              gateway:
+                fromIPPool: ""
+    services: # @schema description: A list of services (DNS); type: object; additionalProperties: true
+      dns:
+        - 8.8.8.8
+
+# IPPools: operator supplies per-cluster
+# @schema description: IPPools parameters
+# @schema type: array
+# @schema item: object
+ipPools: []
+
+# K0s parameters
+k0s: # @schema description: K0s parameters; type: object
+  version: "v1.32.8+k0s.0" # @schema description: K0s version; type: string
+  arch: null # @schema description: K0s Download URL Arch; type: [string, null]; enum:[amd64, arm64, arm, null]
+  images: {} # @schema description: k0s image pull locations; type: object; additionalProperties: true
+  api: # @schema description: Kubernetes API server parameters; type: object
+    extraArgs: {} # @schema description: Map of key-values (strings) for any extra arguments to pass down to Kubernetes api-server process; type: object; additionalProperties: true
+    externalAddress: "" # @schema description: Control Plane endpoint, examples: [10.0.0.2]; type: string; required: true
+  telemetry: # @schema description: Telemetry configuration; type: object
+    enabled: false # @schema description: Whether to enable telemetry; type: boolean
+  provider: calico # @schema description: Network provider; type: string
+  providerOptions: {} # @schema description: Network provider configuration; type: object; additionalProperties: true
+  # @schema description: The Kubelet configuration overrides
+  # @schema type: array
+  # @schema additionalProperties: true
+  workerProfiles: []
+  storage: # @schema description: Kubernetes storage solution; type: object; additionalProperties: true
+    type: etcd
+global:
+  bmRegistry: registry.mirantis.com

@@ -1,0 +1,138 @@
+{{- $global := .Values.global | default dict }}
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: K0sControlPlane
+metadata:
+  name: {{ include "k0scontrolplane.name" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  version: {{ .Values.k0s.version }}
+  replicas: {{ .Values.controlPlaneNumber }}
+  updateStrategy: {{ .Values.updateStrategy }}
+  k0sConfigSpec:
+    {{- if and  $global.k0sURL .Values.k0s.version .Values.k0s.arch }}
+    downloadURL: "{{ $global.k0sURL }}/k0s-{{ .Values.k0s.version }}-{{ .Values.k0s.arch }}"
+    {{- end }}
+    {{- if or $global.registryCertSecret $global.k0sURLCertSecret .Values.controlPlane.files }}
+    files:
+    {{- end }}
+    {{- with .Values.controlPlane.files }}
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- if or $global.registryCertSecret $global.k0sURLCertSecret }}
+    {{- $certs := dict "registry.crt" $global.registryCertSecret "k0s-url.crt" $global.k0sURLCertSecret }}
+    {{- range $path, $secret := $certs }}
+    {{- if $secret }}
+      - contentFrom:
+          secretRef:
+            name: {{ $secret }}
+            key: ca.crt
+        permissions: "0664"
+        path: /usr/local/share/ca-certificates/{{ $path }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- if or .Values.controlPlane.preStartCommands $global.registryCertSecret $global.k0sURLCertSecret }}
+    preStartCommands:
+    {{- with .Values.controlPlane.preStartCommands }}
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- if or $global.registryCertSecret $global.k0sURLCertSecret }}
+      - {{ printf "%supdate-ca-certificates" (ternary "sudo " "" $.Values.controlPlane.useSudo) | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with .Values.controlPlane.postStartCommands }}
+    postStartCommands:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.controlPlane.customUserDataRef }}
+    customUserDataRef:
+      {{- with .secretRef }}
+      secretRef:
+        name: {{ .name }}
+        key: {{ .key }}
+      {{- else with .configMapRef }}
+      configMapRef:
+        name: {{ .name }}
+        key: {{ .key }}
+      {{- end }}
+    {{- end }}
+    args:
+      - --enable-worker
+      {{- with .Values.controlPlane.args }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.controlPlane.disabledComponents }}
+      - --disable-components={{ . }}
+      {{- end }}
+    k0s:
+      apiVersion: k0s.k0sproject.io/v1beta1
+      kind: ClusterConfig
+      metadata:
+        name: k0s
+      spec:
+        telemetry:
+          enabled: {{ .Values.k0s.telemetry.enabled }}
+        {{- with .Values.k0s.workerProfiles }}
+        workerProfiles:
+        {{- range . }}
+        - name: {{ .name }}
+          {{- with .values }}
+          values:
+          {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- if or .Values.k0s.api.externalAddress .Values.k0s.api.extraArgs }}
+        api:
+          {{- if .Values.k0s.api.externalAddress }}
+          externalAddress: {{ .Values.k0s.api.externalAddress }}
+          sans:
+            - {{ .Values.k0s.api.externalAddress }}
+          {{- end }}
+          {{- with .Values.k0s.api.extraArgs }}
+          extraArgs:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- with .Values.k0s.images }}
+        images:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        network:
+          podCIDR: {{ index .Values.clusterNetwork.pods.cidrBlocks 0 }}
+          serviceCIDR: {{ index .Values.clusterNetwork.services.cidrBlocks 0 }}
+          provider: {{ .Values.k0s.provider }}
+          {{- with .Values.k0s.providerOptions }}
+            {{- toYaml . | nindent 10 }}
+          {{- end }}
+          clusterDomain: cluster.local
+          {{- with .Values.controlPlane.keepalived }}
+          {{- if .enabled }}
+          controlPlaneLoadBalancing:
+            enabled: true
+            type: Keepalived
+            keepalived:
+              {{- if .useCustomTemplates }}
+              configTemplateVRRP: {{ .customTemplateFiles.vrrp }}
+              configTemplateVS: {{ .customTemplateFiles.virtualServers }}
+              {{- end }}
+              vrrpInstances:
+                - virtualIPs: [ "{{ .virtualIP }}" ]
+                {{- with .interface | trim }}
+                  interface: {{ . }}
+                {{- end }}
+                {{- with .authPass }}
+                  authPass: {{ . }}
+                {{- end }}
+          {{- end }}
+          {{- end }}
+        {{- with .Values.k0s.storage }}
+        storage:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: Metal3MachineTemplate
+      name: {{ include "metal3machinetemplate.controlplane.name" . }}
+      namespace: {{ .Release.Namespace }}

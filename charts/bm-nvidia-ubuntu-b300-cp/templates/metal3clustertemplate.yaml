@@ -1,0 +1,10 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3Cluster
+metadata:
+  name: {{ include "cluster.name" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  controlPlaneEndpoint:
+    host: {{ .Values.k0s.api.externalAddress | default "127.0.0.1" }}
+    port: {{ .Values.clusterNetwork.apiServerPort }}
+  noCloudProvider: true

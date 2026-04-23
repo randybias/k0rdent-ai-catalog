@@ -1,0 +1,438 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "clusterAnnotations": {
+            "description": "Annotations to apply to the cluster",
+            "type": "object",
+            "additionalProperties": true
+        },
+        "clusterIdentity": {
+            "description": "The Metal3 Service Account credentials secret reference, auto-populated",
+            "type": "object",
+            "properties": {
+                "name": {
+                    "description": "The Metal3 Service Account credentials secret name, auto-populated",
+                    "type": "string"
+                }
+            }
+        },
+        "clusterLabels": {
+            "description": "Labels to apply to the cluster",
+            "type": "object",
+            "additionalProperties": true
+        },
+        "clusterNetwork": {
+            "description": "The cluster network configuration",
+            "type": "object",
+            "properties": {
+                "apiServerPort": {
+                    "description": "The port the API Server should bind to",
+                    "type": "number",
+                    "maximum": 65535,
+                    "minimum": 1
+                },
+                "pods": {
+                    "description": "The network ranges from which Pod networks are allocated",
+                    "type": "object",
+                    "properties": {
+                        "cidrBlocks": {
+                            "description": "A list of CIDR blocks",
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "services": {
+                    "description": "The network ranges from which service VIPs are allocated",
+                    "type": "object",
+                    "properties": {
+                        "cidrBlocks": {
+                            "description": "A list of CIDR blocks",
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "controlPlane": {
+            "description": "Control plane configuration",
+            "type": "object",
+            "required": [
+                "image",
+                "checksum"
+            ],
+            "properties": {
+                "args": {
+                    "description": "Additional arguments to pass to K0s control plane",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "automatedCleaningMode": {
+                    "description": "Automated node cleaning mode: 'metadata' or 'disabled'",
+                    "type": "string",
+                    "enum": [
+                        "metadata",
+                        "disabled"
+                    ]
+                },
+                "checksum": {
+                    "description": "Container disk image checksum for control plane nodes, examples: [http://10.0.0.2:6180/SHA256SUMS]",
+                    "type": "string"
+                },
+                "checksumType": {
+                    "description": "Container disk image checksum type for control plane nodes",
+                    "type": "string",
+                    "enum": [
+                        "sha256",
+                        "sha512",
+                        "md5"
+                    ]
+                },
+                "customDeploy": {
+                    "description": "Custom deploy configuration",
+                    "type": "object",
+                    "properties": {
+                        "method": {
+                            "description": "Custom deploy method for control plane nodes",
+                            "type": "string"
+                        }
+                    }
+                },
+                "customUserDataRef": {
+                    "description": "Reference to ConfigMap or Secret containing custom UserData",
+                    "type": "object"
+                },
+                "dataTemplate": {
+                    "description": "DataTemplate name to use for control plane Metal3MachineTemplate",
+                    "type": "string"
+                },
+                "disabledComponents": {
+                    "description": "Disable k0s components, should include \"konnectivity-server\" in case of using 3-node control plane",
+                    "type": "string"
+                },
+                "files": {
+                    "description": "specifies extra files to be passed to user_data upon control plane creation",
+                    "type": "array"
+                },
+                "format": {
+                    "description": "Container disk image format for control plane nodes",
+                    "type": "string"
+                },
+                "hostSelector": {
+                    "description": "Specify criteria for matching labels on BareMetalHost objects",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "image": {
+                    "description": "Container disk image for control plane nodes, examples: [http://10.0.0.2:6180/cloudimg.img]",
+                    "type": "string"
+                },
+                "keepalived": {
+                    "description": "Contains the keepalived configuration",
+                    "type": "object",
+                    "required": [
+                        "virtualIP"
+                    ],
+                    "properties": {
+                        "authPass": {
+                            "description": "The password to use",
+                            "type": "string",
+                            "maxLength": 8
+                        },
+                        "customTemplateFiles": {
+                            "description": "EXPERIMENTAL. Custom template file paths",
+                            "type": "object",
+                            "properties": {
+                                "virtualServers": {
+                                    "description": "Virtual servers configuration template path",
+                                    "type": "string"
+                                },
+                                "vrrp": {
+                                    "description": "VRRP configuration template path",
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "enabled": {
+                            "description": "Indicates if control plane load balancing should be enabled",
+                            "type": "boolean"
+                        },
+                        "interface": {
+                            "description": "Network interface to use for keepalived",
+                            "type": "string"
+                        },
+                        "useCustomTemplates": {
+                            "description": "EXPERIMENTAL. Use custom templates for Keepalived virtual servers and VRRP configuration",
+                            "type": "boolean"
+                        },
+                        "virtualIP": {
+                            "description": "A user-defined CIDR address which must be routable in the network. Should be the same as the external address, examples: [10.0.0.2/24]",
+                            "type": "string"
+                        }
+                    }
+                },
+                "nodeReuse": {
+                    "description": "Re-use the same BaremetalHosts during deprovisioning and provisioning",
+                    "type": "boolean"
+                },
+                "postStartCommands": {
+                    "description": "Commands to run after starting K0s service",
+                    "type": "array"
+                },
+                "preStartCommands": {
+                    "description": "Commands to run before starting K0s service",
+                    "type": "array"
+                },
+                "useSudo": {
+                    "description": "Determines whether to use sudo for k0s cluster bootstrap commands",
+                    "default": false,
+                    "type": "boolean"
+                }
+            }
+        },
+        "controlPlaneNumber": {
+            "description": "The number of the control plane nodes",
+            "type": "number",
+            "minimum": 1
+        },
+        "dataTemplate": {
+            "description": "Metal3DataTemplate parameters",
+            "type": "object",
+            "properties": {
+                "metaData": {
+                    "description": "Metal3DataTemplate metadata configuration",
+                    "type": "object",
+                    "properties": {
+                        "ipAddressesFromIPPool": {
+                            "description": "The list of metadata items to be rendered as ip addresses",
+                            "type": "array"
+                        },
+                        "objectNames": {
+                            "description": "Render the name of the object that matches the type given. It takes an object attribute, containing the type of the object",
+                            "type": "array"
+                        },
+                        "prefixesFromIPPool": {
+                            "description": "The list of metadata items to be rendered as network prefixes",
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    },
+                    "additionalProperties": true
+                },
+                "networkData": {
+                    "description": "Metal3DataTemplate network configuration",
+                    "type": "object",
+                    "properties": {
+                        "networks": {
+                            "description": "A list of layer 3 networks",
+                            "type": "object",
+                            "additionalProperties": true
+                        },
+                        "services": {
+                            "description": "A list of services (DNS)",
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "additionalProperties": true
+                }
+            }
+        },
+        "ipPools": {
+            "description": "IPPools parameters",
+            "type": "array",
+            "items": {
+                "type": "object"
+            }
+        },
+        "k0s": {
+            "description": "K0s parameters",
+            "type": "object",
+            "properties": {
+                "api": {
+                    "description": "Kubernetes API server parameters",
+                    "type": "object",
+                    "required": [
+                        "externalAddress"
+                    ],
+                    "properties": {
+                        "externalAddress": {
+                            "description": "Control Plane endpoint, examples: [10.0.0.2]",
+                            "type": "string"
+                        },
+                        "extraArgs": {
+                            "description": "Map of key-values (strings) for any extra arguments to pass down to Kubernetes api-server process",
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                },
+                "arch": {
+                    "description": "K0s Download URL Arch",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "enum": [
+                        "amd64",
+                        "arm64",
+                        "arm",
+                        null
+                    ]
+                },
+                "images": {
+                    "description": "k0s image pull locations",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "provider": {
+                    "description": "Network provider",
+                    "type": "string"
+                },
+                "providerOptions": {
+                    "description": "Network provider configuration",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "storage": {
+                    "description": "Kubernetes storage solution",
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string"
+                        }
+                    },
+                    "additionalProperties": true
+                },
+                "telemetry": {
+                    "description": "Telemetry configuration",
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "description": "Whether to enable telemetry",
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "version": {
+                    "description": "K0s version",
+                    "type": "string"
+                },
+                "workerProfiles": {
+                    "description": "The Kubelet configuration overrides",
+                    "type": "array",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "updateStrategy": {
+            "description": "Update strategies to update the control plane: InPlace, Recreate or RecreateDeleteFirst",
+            "type": "string"
+        },
+        "worker": {
+            "description": "Worker parameters",
+            "type": "object",
+            "required": [
+                "image",
+                "checksum"
+            ],
+            "properties": {
+                "args": {
+                    "description": "Additional arguments to pass to K0s worker",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "automatedCleaningMode": {
+                    "description": "Automated node cleaning mode: 'metadata' or 'disabled'",
+                    "type": "string",
+                    "enum": [
+                        "metadata",
+                        "disabled"
+                    ]
+                },
+                "checksum": {
+                    "description": "Container disk image checksum for worker nodes, examples: [http://10.0.0.2:6180/SHA256SUMS]",
+                    "type": "string"
+                },
+                "checksumType": {
+                    "description": "Container disk image checksum type for worker nodes",
+                    "type": "string",
+                    "enum": [
+                        "sha256",
+                        "sha512",
+                        "md5"
+                    ]
+                },
+                "customDeploy": {
+                    "description": "Custom deploy configuration",
+                    "type": "object",
+                    "properties": {
+                        "method": {
+                            "description": "Custom deploy method for worker nodes",
+                            "type": "string"
+                        }
+                    }
+                },
+                "customUserDataRef": {
+                    "description": "Reference to ConfigMap or Secret containing custom UserData",
+                    "type": "object"
+                },
+                "dataTemplate": {
+                    "description": "DataTemplate name to use for worker Metal3MachineTemplate",
+                    "type": "string"
+                },
+                "files": {
+                    "description": "specifies extra files to be passed to user_data upon worker creation",
+                    "type": "array"
+                },
+                "format": {
+                    "description": "Container disk image format for worker nodes",
+                    "type": "string"
+                },
+                "hostSelector": {
+                    "description": "Specify criteria for matching labels on BareMetalHost objects",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "image": {
+                    "description": "Container disk image for worker nodes, examples: [http://10.0.0.2:6180/cloudimg.img]",
+                    "type": "string"
+                },
+                "nodeReuse": {
+                    "description": "Re-use the same BaremetalHosts during deprovisioning and provisioning",
+                    "type": "boolean"
+                },
+                "postStartCommands": {
+                    "description": "Commands to run after starting K0s service",
+                    "type": "array"
+                },
+                "preStartCommands": {
+                    "description": "Commands to run before starting K0s service",
+                    "type": "array"
+                },
+                "useSudo": {
+                    "description": "Determines whether to use sudo for k0s cluster bootstrap commands",
+                    "default": false,
+                    "type": "boolean"
+                }
+            }
+        },
+        "workersNumber": {
+            "description": "The number of the worker nodes",
+            "type": "number",
+            "minimum": 0
+        }
+    }
+}

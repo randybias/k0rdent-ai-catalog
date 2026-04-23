@@ -1,0 +1,15 @@
+{{- if (or (not .Values.controlPlane.dataTemplate) (not .Values.worker.dataTemplate)) }}
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3DataTemplate
+metadata:
+  name: {{ include "metal3datatemplate.name" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  clusterName: {{ include "cluster.name" . }}
+  {{- with .Values.dataTemplate.metaData }}
+  metaData: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.dataTemplate.networkData }}
+  networkData: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}

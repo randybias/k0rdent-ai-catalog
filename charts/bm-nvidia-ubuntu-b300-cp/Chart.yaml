@@ -1,0 +1,19 @@
+annotations:
+  cluster.x-k8s.io/bootstrap-k0sproject-k0smotron: v1beta1
+  cluster.x-k8s.io/control-plane-k0sproject-k0smotron: v1beta1
+  cluster.x-k8s.io/infrastructure-metal3: v1beta1
+  cluster.x-k8s.io/provider: infrastructure-metal3, control-plane-k0sproject-k0smotron,
+    bootstrap-k0sproject-k0smotron
+  k0rdent.mirantis.com/type: deployment
+apiVersion: v2
+appVersion: v1.32.8+k0s.0
+description: |-
+  Metal3 standalone k0s control plane pre-configured for NVIDIA DGX B300
+  (Ubuntu 24.04, Pattern B). Bakes in Blackwell host stack install, kernel
+  pin, ib_umad + mlx5_ib auto-load, fabric NIC netplan rendered from BMH
+  annotations, and a Layer-1 self-validation gate. Forked from Mirantis
+  capm3-standalone-cp 0.5.0-alpha2 — upstream shape preserved; only defaults
+  and dataTemplate configuration changed.
+name: bm-nvidia-ubuntu-b300-cp
+type: application
+version: 0.0.1
