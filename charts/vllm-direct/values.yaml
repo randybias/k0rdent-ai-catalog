@@ -1,4 +1,8 @@
-namespace: inference
+# Default to dynamo-system so vllm-direct can reference the same
+# ceph-models-claim PVC (namespace-scoped resource). On single-track-per-
+# cluster deployments this is fine; rename/remove if you ever co-deploy
+# with a Dynamo stack on the same cluster.
+namespace: dynamo-system
 
 deployment:
   name: vllm-qwen3
