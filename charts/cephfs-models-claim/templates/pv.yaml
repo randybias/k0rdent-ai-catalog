@@ -1,0 +1,37 @@
+# Static PV that binds directly to the existing /models subtree on the
+# ai-shared filesystem. csi-cephfs supports pre-provisioned PVs via
+# volumeAttributes — no dynamic provisioner call is made.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ .Values.claim.pvName }}
+spec:
+  accessModes:
+    {{- toYaml .Values.claim.accessModes | nindent 4 }}
+  capacity:
+    storage: {{ .Values.claim.storage }}
+  persistentVolumeReclaimPolicy: Retain
+  volumeMode: Filesystem
+  storageClassName: ""   # empty = no SC; bound directly via claimRef
+  claimRef:
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    name: {{ .Values.claim.pvcName }}
+    namespace: {{ .Values.claim.namespace }}
+  csi:
+    driver: {{ .Values.claim.csiDriver }}
+    # volumeHandle must be unique and stable across restarts.
+    volumeHandle: {{ printf "%s-%s" .Values.claim.pvName .Values.ceph.fsName | quote }}
+    nodeStageSecretRef:
+      name: {{ default "ceph-models-credentials" .Values.ceph.existingSecret }}
+      namespace: {{ .Values.claim.namespace }}
+    nodePublishSecretRef:
+      name: {{ default "ceph-models-credentials" .Values.ceph.existingSecret }}
+      namespace: {{ .Values.claim.namespace }}
+    volumeAttributes:
+      clusterID: {{ .Values.ceph.clusterID | quote }}
+      fsName: {{ .Values.ceph.fsName | quote }}
+      staticVolume: "true"
+      rootPath: {{ .Values.ceph.rootPath | quote }}
+      # Ceph CSI reads monitors from its ConfigMap by default, so we don't
+      # repeat them here. The ceph-csi-cephfs chart creates that ConfigMap.

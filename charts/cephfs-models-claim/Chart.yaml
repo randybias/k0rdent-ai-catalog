@@ -1,0 +1,11 @@
+apiVersion: v2
+name: cephfs-models-claim
+description: CephFS Secret + static PV + PVC for model weights, pinned at /models on the shared filesystem. Default namespace `inference`. Expects the ceph-csi-cephfs driver to already be installed (separate ServiceTemplate). Renamed from ceph-models-claim (same behavior, cleaner name, defaults moved to the inference namespace).
+type: application
+version: 0.3.0
+appVersion: "1.0.0"
+keywords:
+  - ceph
+  - cephfs
+  - models
+  - inference

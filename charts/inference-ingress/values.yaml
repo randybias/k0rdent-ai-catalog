@@ -1,0 +1,42 @@
+namespace: inference
+
+ingress:
+  # IngressClass to bind to. Must match the ingress controller's
+  # ingressClassResource.name (default "nginx" for ingress-nginx).
+  className: nginx
+  name: inference
+  # Leaving host empty produces a rule with no `host:` field, which matches
+  # ANY Host header — clients can hit the node by IP. Set to a real hostname
+  # once DNS exists.
+  host: ""
+  path: /
+  pathType: Prefix
+  # Annotations merged into the Ingress resource. Defaults below are tuned
+  # for long-running inference requests:
+  #   * proxy-read/send-timeout 3600s covers first-request cudagraph compile
+  #     (~2-4 min on Qwen3.6-MoE cold) and long generation under high
+  #     max_tokens. Default nginx 60s produces 504s on first hit.
+  #   * proxy-buffering off streams response bytes back to the client as
+  #     soon as vLLM emits them, rather than waiting for the full body.
+  #     Required for OpenAI-compatible SSE streaming.
+  #   * proxy-request-buffering off streams large request bodies (coding
+  #     agents with multi-KB system prompts + tool schemas) without
+  #     nginx buffering them to a temp file.
+  #   * proxy-http-version 1.1 is required for keep-alive and streaming.
+  #
+  # Override by setting ingress.annotations in MCS values; the full map
+  # below is merged-and-replaced by whatever the caller provides.
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+
+# Backend Service the ingress routes to. Per-stack:
+# - Dynamo: operator creates `<deployment>-frontend` (e.g. `qwen3-coder-agg-frontend`).
+# - vllm-direct: the chart's own Service (e.g. `vllm-qwen3`).
+# Set in MCS values to match the runtime's Service name.
+service:
+  name: ""    # REQUIRED — no sensible default; MCS must set
+  port: 8000

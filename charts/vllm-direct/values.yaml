@@ -1,8 +1,8 @@
-# Default to dynamo-system so vllm-direct can reference the same
-# ceph-models-claim PVC (namespace-scoped resource). On single-track-per-
-# cluster deployments this is fine; rename/remove if you ever co-deploy
-# with a Dynamo stack on the same cluster.
-namespace: dynamo-system
+# Namespace for all inference workload resources (Deployment, Service,
+# PVC claims, ConfigMap). Matches the cephfs-models-claim chart's
+# claim.namespace default — the PVC must be in the same namespace as the
+# pods consuming it.
+namespace: inference
 
 deployment:
   name: vllm-qwen3
@@ -18,7 +18,7 @@ model:
   servedModelName: "Qwen/Qwen3.6-35B-A3B"
   mountPath: /models
   subdir: qwen3.6-35b
-  pvcName: qwen3-model-pvc
+  pvcName: cephfs-models   # default created by cephfs-models-claim
 
 # `vllm serve` flag set — values translate to CLI args in the template.
 vllm:

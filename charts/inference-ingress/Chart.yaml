@@ -1,0 +1,10 @@
+apiVersion: v2
+name: inference-ingress
+description: Generic Ingress resource routing /v1/* to a ClusterIP Service in the inference namespace. Host-agnostic (matches any Host header). Annotations pre-set for long first-request cudagraph-compile (proxy-read-timeout 3600s) and SSE streaming (buffering off). Model-independent — Service name + port are values. Renamed from qwen3-ingress.
+type: application
+version: 0.2.0
+appVersion: "1.0.0"
+keywords:
+  - ingress
+  - inference
+  - nginx

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: dynamo-agg
+description: NVIDIA Dynamo DynamoGraphDeployment in aggregated single-node shape (Frontend + VllmPrefillWorker). Model-agnostic — servedModelName, weights subdir, TP, parsers, and all vLLM flags are values-driven. Matches the upstream Dynamo recipe shape at github.com/ai-dynamo/dynamo/tree/main/recipes/*/vllm/agg. Weights loaded read-only from a CephFS-backed PVC. NVMe-backed vLLM compile cache persists cudagraph captures across restarts. Renamed from llama3-dynamo.
+type: application
+version: 0.2.0
+appVersion: "dynamo-1.0.0"
+keywords:
+  - dynamo
+  - vllm
+  - inference
+  - aggregated

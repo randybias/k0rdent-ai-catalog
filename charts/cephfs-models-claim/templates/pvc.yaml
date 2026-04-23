@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.claim.pvcName }}
+  namespace: {{ .Values.claim.namespace }}
+spec:
+  accessModes:
+    {{- toYaml .Values.claim.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.claim.storage }}
+  storageClassName: ""
+  volumeName: {{ .Values.claim.pvName }}

@@ -1,0 +1,126 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: inference-smoke-test
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    # Helm post-install/post-upgrade hook. Helm blocks the install until the
+    # Job completes successfully — so the MCS/ClusterSummary won't report
+    # Ready (and by transitivity the ClusterDeployment won't be Ready) until
+    # the stack actually serves. Pod-Ready alone doesn't prove the endpoint
+    # works; this does.
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    # Delete any existing Job resource before re-running (idempotent retries
+    # on reconcile). Keep successful Jobs out of the way; leave failed Jobs
+    # alive for post-mortem (ttlSecondsAfterFinished reaps them after 30min).
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  # Only one attempt per hook invocation — Helm + sveltos will retry at
+  # the chart-install level, not the Job-pod level.
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 1800
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: inference-smoke-test
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: probe
+          image: {{ .Values.image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: ENDPOINT_HOST
+              value: {{ .Values.endpoint.host | quote }}
+            - name: ENDPOINT_PORT
+              value: {{ .Values.endpoint.port | quote }}
+            - name: ENDPOINT_SCHEME
+              value: {{ .Values.endpoint.scheme | quote }}
+            - name: MODEL
+              value: {{ .Values.model | quote }}
+            - name: READY_TIMEOUT
+              value: {{ .Values.timeouts.readinessSeconds | quote }}
+            - name: INFER_TIMEOUT
+              value: {{ .Values.timeouts.inferenceSeconds | quote }}
+            - name: MIN_TOKENS
+              value: {{ .Values.minCompletionTokens | quote }}
+          command:
+            - sh
+            - -euc
+            - |
+              HOST="${ENDPOINT_HOST:-$NODE_IP}"
+              ENDPOINT="${ENDPOINT_SCHEME}://${HOST}:${ENDPOINT_PORT}"
+              echo "=== k0rdent AI inference stack smoke test ==="
+              echo "endpoint: $ENDPOINT"
+              echo "model:    $MODEL"
+              echo
+
+              # Phase 1 — wait for the model to appear in /v1/models.
+              echo "=== Phase 1: waiting for model in /v1/models ==="
+              deadline=$(( $(date +%s) + READY_TIMEOUT ))
+              while :; do
+                resp=$(curl -sS -m 5 "$ENDPOINT/v1/models" 2>&1 || true)
+                if echo "$resp" | grep -q "\"$MODEL\""; then
+                  echo "[OK] model $MODEL is listed"
+                  break
+                fi
+                now=$(date +%s)
+                if [ "$now" -ge "$deadline" ]; then
+                  echo "[FAIL] model $MODEL not listed after ${READY_TIMEOUT}s"
+                  echo "last response: $resp"
+                  exit 1
+                fi
+                sleep 10
+              done
+              echo
+
+              # Phase 2 — issue a chat completion and validate.
+              echo "=== Phase 2: inference round-trip ==="
+              body=$(cat <<JSON
+              {
+                "model": "$MODEL",
+                "messages": [{"role":"user","content":"Reply with the word READY and nothing else."}],
+                "max_tokens": 16,
+                "temperature": 0.0
+              }
+              JSON
+              )
+              start=$(date +%s)
+              resp=$(curl -sS -m "$INFER_TIMEOUT" -w "\nHTTP_STATUS:%{http_code}\n" \
+                       "$ENDPOINT/v1/chat/completions" \
+                       -H "Content-Type: application/json" \
+                       -d "$body" 2>&1)
+              elapsed=$(( $(date +%s) - start ))
+              status=$(echo "$resp" | sed -n 's/^HTTP_STATUS://p' | tr -d '\r')
+              body=$(echo "$resp" | sed '/^HTTP_STATUS:/d')
+
+              echo "http status: $status"
+              echo "latency:     ${elapsed}s"
+              echo "body:        $body" | head -c 800
+              echo
+
+              if [ "$status" != "200" ]; then
+                echo "[FAIL] non-200 status"
+                exit 2
+              fi
+              if ! echo "$body" | grep -q '"choices"'; then
+                echo "[FAIL] response missing 'choices'"
+                exit 3
+              fi
+              tok=$(echo "$body" | sed -n 's/.*"completion_tokens":\([0-9]*\).*/\1/p')
+              if [ -z "$tok" ] || [ "$tok" -lt "$MIN_TOKENS" ]; then
+                echo "[FAIL] completion_tokens=$tok less than MIN_TOKENS=$MIN_TOKENS"
+                exit 4
+              fi
+              echo
+              echo "[PASS] stack smoke test succeeded — model ready, endpoint returning completions"
+              exit 0

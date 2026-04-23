@@ -1,0 +1,14 @@
+{{- if .Values.compileCache.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.deployment.name }}-compile-cache
+  namespace: {{ .Values.namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.compileCache.storageClassName | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.compileCache.size }}
+{{- end }}

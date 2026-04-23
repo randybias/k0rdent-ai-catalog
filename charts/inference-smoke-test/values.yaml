@@ -1,0 +1,41 @@
+# How the probe reaches the inference endpoint.
+#
+# The probe builds $ENDPOINT from:
+#   scheme://<host>:<port>
+# where:
+#   - host resolves to `endpoint.host` if non-empty; otherwise to the probe
+#     pod's own nodeIP (injected via downward API status.hostIP).
+#   - port is `endpoint.port`.
+#
+# Typical usage on a single-node cluster with ingress-nginx on hostPort:
+#   endpoint:
+#     host: ""         # use node IP
+#     port: 8000       # ingress-nginx hostPort
+#     scheme: http
+#
+# For in-cluster Service routing (no ingress), set host to the Service DNS name.
+endpoint:
+  host: ""
+  port: 8000
+  scheme: http
+
+# Model name as it appears in /v1/models — must match what the worker
+# registered (typically the --served-model-name value).
+model: "Qwen/Qwen3.6-35B-A3B"
+
+# Expected minimum completion tokens; failure below this is treated as broken.
+minCompletionTokens: 4
+
+# Timeouts. inferenceSeconds is deliberately generous because the first
+# request against a cold vLLM V1 engine triggers lazy cudagraph capture +
+# (with MoE+mamba models like Qwen3.6) a ~2-4 min in-engine delay the
+# first time. Subsequent requests return in <200 ms.
+timeouts:
+  readinessSeconds: 600
+  inferenceSeconds: 900
+
+# Probe image. curlimages/curl is minimal and ships a modern curl.
+image: curlimages/curl:8.10.1
+
+# Where the Job runs.
+namespace: inference
