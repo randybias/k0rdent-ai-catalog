@@ -51,16 +51,10 @@ controlPlane: # @schema description: Control plane configuration; type: object
     # --- Base OS prep ---
     # NOTE: lab-specific conveniences (setting ubuntu user password,
     # enabling ssh password auth) are intentionally NOT set here — they
-    # belong in per-cluster overrides, not in a shareable template
-    # default. ssh authorized_keys are per-cluster too; supply via
-    # controlPlane.files in the ClusterDeployment.
+    # belong in per-cluster overrides, not in a shareable template default.
+    # ssh authorized_keys are per-cluster too; supply via controlPlane.files.
     - mkdir -p /home/ubuntu/.ssh && chown -R ubuntu:ubuntu /home/ubuntu/.ssh && chmod 700 /home/ubuntu/.ssh && chmod 600 /home/ubuntu/.ssh/authorized_keys 2>/dev/null || true
     - sed -i "s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=5/;s/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=menu/" /etc/default/grub && update-grub
-
-    # --- containerd drop-in bridging ---
-    - mkdir -p /etc/k0s/containerd.d /etc/containerd
-    - rm -rf /etc/containerd/conf.d
-    - ln -sfn /etc/k0s/containerd.d /etc/containerd/conf.d
 
     # --- apt prep ---
     - printf 'Acquire::ForceIPv4 "true";\n' > /etc/apt/apt.conf.d/99force-ipv4
@@ -68,18 +62,15 @@ controlPlane: # @schema description: Control plane configuration; type: object
     - printf 'net.ipv6.conf.all.disable_ipv6=1\n' > /etc/sysctl.d/99-disable-ipv6.conf
     - DEBIAN_FRONTEND=noninteractive apt-get update -qq
 
-    # --- IB stack (ib_umad + ibstat from infiniband-diags) ---
+    # --- IB stack ---
+    # Kernel-module prerequisites only. NVIDIA driver + fabricmanager + nvlsm
+    # are now managed by the GPU Operator (Pattern A: driver.enabled=true,
+    # kernelModuleType=open). linux-modules-extra provides ib_umad;
+    # infiniband-diags is kept for host-side IB debugging (ibstat).
     - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)" rdma-core infiniband-diags
 
-    # --- NVIDIA CUDA apt repo ---
-    - wget -qO /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
-    - dpkg -i /tmp/cuda-keyring.deb
-    - DEBIAN_FRONTEND=noninteractive apt-get update -qq
-
-    # --- Blackwell host stack (nvidia-open + fabricmanager-595 + nvlsm) ---
-    - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nvidia-open cuda-drivers-fabricmanager-595 nvlsm
-
     # --- Module auto-load (ib_umad + mlx5_ib) ---
+    # IB kernel modules that can't be containerized — must live on the host.
     - |
       cat > /etc/modules-load.d/b300-ib.conf <<'EOF'
       ib_umad
@@ -88,10 +79,9 @@ controlPlane: # @schema description: Control plane configuration; type: object
     - modprobe ib_umad
     - modprobe mlx5_ib
 
-    # --- Start fabricmanager ---
-    - systemctl enable --now nvidia-fabricmanager
-
     # --- Kernel pin + disable unattended-upgrades ---
+    # Lab policy: deterministic kernel. Unattended upgrades break ib_umad by
+    # installing a kernel without co-installing linux-modules-extra.
     - |
       apt-mark hold \
         linux-image-generic \
@@ -122,17 +112,14 @@ controlPlane: # @schema description: Control plane configuration; type: object
     - netplan apply
 
     # --- Layer-1 self-validation gate ---
+    # Simplified now that driver is Pattern A: we can only assert what the
+    # host is actually responsible for. NVIDIA driver, fabricmanager, GPUs,
+    # and Fabric State are validated later by the GPU Operator MCS + smoke test.
     - |
       set -e
       echo "=== Layer 1 self-validation ==="
       test $(ls /sys/class/infiniband/ 2>/dev/null | wc -l) -gt 0
       echo "  [OK] IB devices present"
-      systemctl is-active nvidia-fabricmanager >/dev/null
-      echo "  [OK] fabricmanager active"
-      test "$(nvidia-smi -L 2>/dev/null | wc -l)" = "8"
-      echo "  [OK] 8 GPUs visible"
-      test "$(nvidia-smi -q 2>/dev/null | grep -c 'Fabric State.*: Completed')" = "8"
-      echo "  [OK] all 8 GPUs fabric-ready"
       timeout 5 bash -c 'echo > /dev/tcp/10.0.2.207/6789'
       echo "  [OK] Ceph MON reachable"
       echo "=== LAYER-1-VALIDATED ==="
