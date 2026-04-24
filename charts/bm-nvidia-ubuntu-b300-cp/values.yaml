@@ -207,7 +207,7 @@ dataTemplate: # @schema description: Metal3DataTemplate parameters; type: object
       ethernets:
         - id: ens3923f0np0
           macAddress:
-            fromHostInterface: ens3923f0np0
+            fromHostInterface: ens3923f0
           type: phy
     networks: # @schema description: A list of layer 3 networks; type: object; additionalProperties: true
       ipv4:
