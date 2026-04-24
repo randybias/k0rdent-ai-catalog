@@ -210,14 +210,20 @@ dataTemplate: # @schema description: Metal3DataTemplate parameters; type: object
         object: baremetalhost
         annotation: lab.mirantis.com/fabric-mtu
   # Default PXE NIC template for SYS-822GS-NB3RT (DGX B300).
-  # Operator supplies the IPPool name in the ClusterDeployment's
-  # spec.config.dataTemplate.networkData.
+  # MAC is pulled from BMH annotation `lab.mirantis.com/pxe-nic-mac`
+  # (set per-host alongside the fabric-* annotations). Using fromAnnotation
+  # instead of fromHostInterface means we don't depend on Metal3 inspection
+  # (which PXE-cycle-loops on some DGX BMCs — see PLAN_GPU1_PROPER_REBUILD.md).
+  # The operator sets the MAC annotation once per BMH and it's consumed at
+  # Metal3Data render time.
   networkData: # @schema description: Metal3DataTemplate network configuration; type: object; additionalProperties: true
     links:
       ethernets:
         - id: ens3923f0np0
           macAddress:
-            fromHostInterface: ens3923f0np0
+            fromAnnotation:
+              annotation: lab.mirantis.com/pxe-nic-mac
+              object: baremetalhost
           type: phy
     networks: # @schema description: A list of layer 3 networks; type: object; additionalProperties: true
       ipv4:

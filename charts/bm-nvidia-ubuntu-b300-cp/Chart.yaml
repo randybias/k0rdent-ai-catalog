@@ -16,4 +16,4 @@ description: |-
   and dataTemplate configuration changed.
 name: bm-nvidia-ubuntu-b300-cp
 type: application
-version: 0.0.2
+version: 0.0.3
