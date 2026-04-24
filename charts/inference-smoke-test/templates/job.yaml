@@ -7,20 +7,16 @@ metadata:
     app.kubernetes.io/name: inference-smoke-test
     app.kubernetes.io/instance: {{ .Release.Name }}
   annotations:
-    # Helm post-install/post-upgrade hook. Helm blocks the install until the
-    # Job completes successfully — so the MCS/ClusterSummary won't report
-    # Ready (and by transitivity the ClusterDeployment won't be Ready) until
-    # the stack actually serves. Pod-Ready alone doesn't prove the endpoint
-    # works; this does.
+    # Helm post-install/post-upgrade hook. Helm blocks the install until
+    # the Job completes successfully — so the MCS/ClusterSummary won't
+    # report Ready (and by transitivity the ClusterDeployment won't be
+    # Ready) until the stack actually serves.
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-weight": "5"
-    # Delete any existing Job resource before re-running (idempotent retries
-    # on reconcile). Keep successful Jobs out of the way; leave failed Jobs
-    # alive for post-mortem (ttlSecondsAfterFinished reaps them after 30min).
+    # Keep successful runs out of the way; leave failed runs alive for
+    # post-mortem (ttlSecondsAfterFinished reaps them).
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
-  # Only one attempt per hook invocation — Helm + sveltos will retry at
-  # the chart-install level, not the Job-pod level.
   backoffLimit: 0
   ttlSecondsAfterFinished: 1800
   template:
@@ -51,26 +47,28 @@ spec:
               value: {{ .Values.timeouts.readinessSeconds | quote }}
             - name: INFER_TIMEOUT
               value: {{ .Values.timeouts.inferenceSeconds | quote }}
-            - name: MIN_TOKENS
-              value: {{ .Values.minCompletionTokens | quote }}
+            - name: FIRST_CHUNK_TIMEOUT
+              value: {{ .Values.timeouts.firstChunkSeconds | quote }}
           command:
             - sh
             - -euc
             - |
               HOST="${ENDPOINT_HOST:-$NODE_IP}"
               ENDPOINT="${ENDPOINT_SCHEME}://${HOST}:${ENDPOINT_PORT}"
-              echo "=== k0rdent AI inference stack smoke test ==="
+              echo "=== inference-smoke-test ==="
               echo "endpoint: $ENDPOINT"
               echo "model:    $MODEL"
               echo
 
-              # Phase 1 — wait for the model to appear in /v1/models.
-              echo "=== Phase 1: waiting for model in /v1/models ==="
+              # =======================================================
+              # Phase 1 — model listed in /v1/models
+              # =======================================================
+              echo "=== Phase 1: /v1/models ==="
               deadline=$(( $(date +%s) + READY_TIMEOUT ))
               while :; do
                 resp=$(curl -sS -m 5 "$ENDPOINT/v1/models" 2>&1 || true)
                 if echo "$resp" | grep -q "\"$MODEL\""; then
-                  echo "[OK] model $MODEL is listed"
+                  echo "[OK] model listed"
                   break
                 fi
                 now=$(date +%s)
@@ -83,12 +81,14 @@ spec:
               done
               echo
 
-              # Phase 2 — issue a chat completion and validate.
-              echo "=== Phase 2: inference round-trip ==="
+              # =======================================================
+              # Phase 2 — non-streaming chat completion
+              # =======================================================
+              echo "=== Phase 2: non-streaming /v1/chat/completions ==="
               body=$(cat <<JSON
               {
                 "model": "$MODEL",
-                "messages": [{"role":"user","content":"Reply with the word READY and nothing else."}],
+                "messages": [{"role":"user","content":"Say ok."}],
                 "max_tokens": 16,
                 "temperature": 0.0
               }
@@ -101,26 +101,94 @@ spec:
                        -d "$body" 2>&1)
               elapsed=$(( $(date +%s) - start ))
               status=$(echo "$resp" | sed -n 's/^HTTP_STATUS://p' | tr -d '\r')
-              body=$(echo "$resp" | sed '/^HTTP_STATUS:/d')
-
-              echo "http status: $status"
-              echo "latency:     ${elapsed}s"
-              echo "body:        $body" | head -c 800
+              rbody=$(echo "$resp" | sed '/^HTTP_STATUS:/d')
+              echo "http=$status  latency=${elapsed}s"
+              echo "body: $(echo "$rbody" | head -c 400)"
               echo
-
               if [ "$status" != "200" ]; then
-                echo "[FAIL] non-200 status"
-                exit 2
+                echo "[FAIL] non-200 from /v1/chat/completions"; exit 2
               fi
-              if ! echo "$body" | grep -q '"choices"'; then
-                echo "[FAIL] response missing 'choices'"
-                exit 3
+              echo "$rbody" | grep -q '"choices"' || { echo "[FAIL] no 'choices' in body"; exit 3; }
+              # Extract first message.content via sed (handles simple unescaped strings;
+              # the trivial "Say ok." prompt never needs quotes/escapes in the response).
+              content=$(echo "$rbody" | sed -n 's/.*"content":"\([^"]*\)".*/\1/p' | head -1)
+              if [ -z "$content" ]; then
+                echo "[FAIL] choices[0].message.content is empty"; exit 4
               fi
-              tok=$(echo "$body" | sed -n 's/.*"completion_tokens":\([0-9]*\).*/\1/p')
-              if [ -z "$tok" ] || [ "$tok" -lt "$MIN_TOKENS" ]; then
-                echo "[FAIL] completion_tokens=$tok less than MIN_TOKENS=$MIN_TOKENS"
-                exit 4
+              tok=$(echo "$rbody" | sed -n 's/.*"completion_tokens":\([0-9]*\).*/\1/p' | head -1)
+              if [ -z "$tok" ] || [ "$tok" -lt 1 ]; then
+                echo "[FAIL] completion_tokens=${tok:-<missing>} <1"; exit 5
               fi
+              echo "[OK] content='$(echo "$content" | head -c 60)' tokens=$tok latency=${elapsed}s"
               echo
-              echo "[PASS] stack smoke test succeeded — model ready, endpoint returning completions"
+
+              # =======================================================
+              # Phase 3 — streaming chat completion (SSE)
+              # =======================================================
+              echo "=== Phase 3: streaming /v1/chat/completions (stream=true) ==="
+              sbody=$(cat <<JSON
+              {
+                "model": "$MODEL",
+                "messages": [{"role":"user","content":"Count to three."}],
+                "max_tokens": 32,
+                "temperature": 0.0,
+                "stream": true
+              }
+              JSON
+              )
+              tmp=$(mktemp)
+              start=$(date +%s)
+              # -N: no output buffering so SSE chunks land in $tmp as they arrive.
+              curl -sS -m "$INFER_TIMEOUT" -N \
+                   "$ENDPOINT/v1/chat/completions" \
+                   -H "Content-Type: application/json" \
+                   -d "$sbody" > "$tmp" 2>&1 &
+              CURL_PID=$!
+              # Wait for the first `data: {` event within FIRST_CHUNK_TIMEOUT.
+              first_deadline=$(( $(date +%s) + FIRST_CHUNK_TIMEOUT ))
+              first_seen=""
+              while [ $(date +%s) -lt $first_deadline ]; do
+                if grep -qE '^data: \{' "$tmp" 2>/dev/null; then
+                  first_seen="yes"
+                  first_chunk_elapsed=$(( $(date +%s) - start ))
+                  break
+                fi
+                if ! kill -0 $CURL_PID 2>/dev/null; then
+                  # curl exited already — either success or failure
+                  break
+                fi
+                sleep 1
+              done
+              if [ -z "$first_seen" ]; then
+                kill $CURL_PID 2>/dev/null || true
+                echo "[FAIL] no SSE data chunk within ${FIRST_CHUNK_TIMEOUT}s"
+                echo "stream output so far:"
+                head -c 1200 "$tmp"
+                exit 6
+              fi
+              echo "[OK] first SSE chunk arrived at +${first_chunk_elapsed}s"
+              # Wait for curl to finish (up to INFER_TIMEOUT; already armed on curl)
+              wait $CURL_PID 2>/dev/null || true
+              data_chunks=$(grep -cE '^data: \{' "$tmp" 2>/dev/null || echo 0)
+              grep -qE '^data: \[DONE\]' "$tmp" || {
+                echo "[FAIL] no 'data: [DONE]' terminator"
+                echo "final 40 lines of stream:"
+                tail -40 "$tmp"
+                exit 7
+              }
+              # At least one chunk must carry a non-empty delta.content.
+              has_delta=$(grep -E '^data: \{' "$tmp" \
+                          | sed -n 's/.*"content":"\([^"]\{1,\}\)".*/x/p' \
+                          | head -1)
+              if [ -z "$has_delta" ]; then
+                echo "[FAIL] no non-empty delta.content across $data_chunks chunks"
+                echo "sample chunks:"
+                grep -E '^data: \{' "$tmp" | head -3
+                exit 8
+              fi
+              total_stream_elapsed=$(( $(date +%s) - start ))
+              echo "[OK] streaming: $data_chunks chunks + [DONE], total=${total_stream_elapsed}s"
+              echo
+
+              echo "[PASS] inference-smoke-test succeeded (Phase 1+2+3)"
               exit 0
